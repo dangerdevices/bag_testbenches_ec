@@ -1,0 +1,16 @@
+#
+# Edit Lock-Stake file. CAUTION: Please do not change.
+#
+# Information about current Edit Lock Owner.
+#
+LockStakeVersion               1.1
+LoginName                      erichang
+HostName                       bwrcr720-3.eecs.berkeley.edu
+ProcessIdentifier              7959
+ProcessCreationTime_UTC        1500686540
+ProcessCreationTime_Readable   Fri Jul 21 18:22:20 2017 PDT
+AppIdentifier                  OA File System Design Manager
+OSType                         unix
+ReasonForPlacingEditLock       OpenAccess edit lock
+FilePathUsedToEditLock         /tools/projects/erichang/bmi/bmi_rx_tsmc16/bag_ec_testbenches/bag_ec_testbenches/mos_tb_sp/schematic/sch.oa.cdslck
+TimeEditLocked                 Sat Jul 22 15:06:42 2017 PDT
