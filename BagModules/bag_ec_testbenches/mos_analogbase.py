@@ -46,7 +46,7 @@ class bag_ec_testbenches__mos_analogbase(Module):
     def __init__(self, bag_config, parent=None, prj=None, **kwargs):
         Module.__init__(self, bag_config, yaml_file, parent=parent, prj=prj, **kwargs)
 
-    def design(self):
+    def design(self, mos_type='nch', w=4, l=16e-9, nf=10, intent='standard', ndum=4, stack=1):
         """To be overridden by subclasses to design this module.
 
         This method should fill in values for all parameters in
@@ -62,7 +62,40 @@ class bag_ec_testbenches__mos_analogbase(Module):
         restore_instance()
         array_instance()
         """
-        pass
+        if nf == 1:
+            raise ValueError('Cannot make 1 finger transistor.')
+        # select the correct transistor type
+        if mos_type == 'nch':
+            self.delete_instance('XP')
+            inst_name = 'XN'
+        else:
+            self.delete_instance('XN')
+            inst_name = 'XP'
+
+        # array instances
+        name_list = []
+        term_list = []
+        # add stack transistors
+        for idx in range(stack):
+            name_list.append('%s%d<%d:0>' % (inst_name, idx, nf - 1))
+            cur_term = {}
+            if idx != stack - 1:
+                cur_term['S'] = 'mid%d<%d:0>' % (idx, nf - 1)
+            if idx != 0:
+                cur_term['D'] = 'mid%d<%d:0>' % (idx - 1, nf - 1)
+            term_list.append(cur_term)
+
+        name_list.append('XD0')
+        term_list.append(dict(D='s', G='b', S='b'))
+        name_list.append('XD1')
+        term_list.append(dict(D='b', G='b', S='b'))
+        self.array_instance(inst_name, name_list, term_list=term_list)
+
+        # design transistors
+        for idx in range(stack):
+            self.instances[inst_name][idx].design(w=w, l=l, nf=1, intent=intent)
+        self.instances[inst_name][stack].design(w=w, l=l, nf=2, intent=intent)
+        self.instances[inst_name][stack + 1].design(w=w, l=l, nf=(ndum * 2 - 2), intent=intent)
 
     def get_layout_params(self, **kwargs):
         """Returns a dictionary with layout parameters.

@@ -46,7 +46,7 @@ class bag_ec_testbenches__mos_tb_ibias(Module):
     def __init__(self, bag_config, parent=None, prj=None, **kwargs):
         Module.__init__(self, bag_config, yaml_file, parent=parent, prj=prj, **kwargs)
 
-    def design(self):
+    def design(self, dut_lib='', dut_cell='', ):
         """To be overridden by subclasses to design this module.
 
         This method should fill in values for all parameters in
@@ -62,7 +62,7 @@ class bag_ec_testbenches__mos_tb_ibias(Module):
         restore_instance()
         array_instance()
         """
-        pass
+        self.replace_instance_master('XDUT', lib_name=dut_lib, cell_name=dut_cell, static=True)
 
     def get_layout_params(self, **kwargs):
         """Returns a dictionary with layout parameters.
