@@ -1,0 +1,56 @@
+lib_name: bag_ec_testbenches
+cell_name: mos_tb_ibias
+pins: [  ]
+instances:
+  XDUT:
+    lib_name: bag_ec_testbenches
+    cell_name: mos_analogbase
+    instpins:
+      s:
+        direction: inputOutput
+        net_name: "vs"
+        num_bits: 1
+      d:
+        direction: inputOutput
+        net_name: "vg"
+        num_bits: 1
+      b:
+        direction: inputOutput
+        net_name: "vs"
+        num_bits: 1
+      g:
+        direction: inputOutput
+        net_name: "vg"
+        num_bits: 1
+  VD:
+    lib_name: analogLib
+    cell_name: vdc
+    instpins:
+      PLUS:
+        direction: inputOutput
+        net_name: "vg"
+        num_bits: 1
+      MINUS:
+        direction: inputOutput
+        net_name: "vs"
+        num_bits: 1
+  VS:
+    lib_name: analogLib
+    cell_name: vdc
+    instpins:
+      PLUS:
+        direction: inputOutput
+        net_name: "vs"
+        num_bits: 1
+      MINUS:
+        direction: inputOutput
+        net_name: "gnd!"
+        num_bits: 1
+  I1:
+    lib_name: analogLib
+    cell_name: gnd
+    instpins:
+      gnd!:
+        direction: inputOutput
+        net_name: "gnd!"
+        num_bits: 1
