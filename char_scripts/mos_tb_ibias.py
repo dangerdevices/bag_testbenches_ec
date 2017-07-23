@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 
+import os
 import yaml
 import itertools
 
 from bag import float_to_si_string
 from bag.core import BagProject
+from bag.data import load_sim_results, save_sim_results
 from bag.layout import RoutingGrid, TemplateDB
 
 from abs_templates_ec.mos_char import Transistor
@@ -24,12 +26,10 @@ def make_tdb(prj, specs):
     return tdb
 
 
-def generate_lay(prj, specs, sch_params, cell_name):
-    temp_db = make_tdb(prj, specs)
-
+def generate_lay(prj, specs, sch_params, cell_name, temp_db):
     layout_params = specs['layout_params'].copy()
     layout_params['mos_type'] = sch_params['mos_type']
-    layout_params['lch'] = sch_params['lch']
+    layout_params['lch'] = sch_params['l']
     layout_params['w'] = sch_params['w']
     layout_params['threshold'] = sch_params['intent']
     layout_params['stack'] = sch_params['stack']
@@ -37,8 +37,8 @@ def generate_lay(prj, specs, sch_params, cell_name):
     layout_params['fg_dum'] = sch_params['ndum']
 
     temp_list = [temp_db.new_template(params=layout_params, temp_cls=Transistor, debug=False), ]
-    print('create layout')
     temp_db.batch_layout(prj, temp_list, [cell_name])
+    return layout_params
 
 
 def generate_sch(prj, specs, sch_params, dsn_cell_name, tb_cell_name):
@@ -49,19 +49,13 @@ def generate_sch(prj, specs, sch_params, dsn_cell_name, tb_cell_name):
 
     impl_lib = specs['impl_lib']
 
-    print('create DUT module')
     dsn = prj.create_design_module(dut_lib, dut_cell)
-    print('design DUT')
     dsn.design(**sch_params)
-    print('create DUT schematic')
     dsn.implement_design(impl_lib, top_cell_name=dsn_cell_name, erase=True)
 
-    print('create TB module')
     tb_sch = prj.create_design_module(tb_lib, tb_cell)
-    print('design TB')
     tb_sch.design(dut_lib=impl_lib, dut_cell=dsn_cell_name)
-    print('create TB schematic')
-    tb_sch.implement_design(impl_lib, top_cell_name=tb_cell_name)
+    tb_sch.implement_design(impl_lib, top_cell_name=tb_cell_name, erase=True)
 
 
 def characterize(prj, specs):
@@ -71,17 +65,24 @@ def characterize(prj, specs):
     view_name = specs['view_name']
     sim_envs = specs['sim_envs']
     rcx_params = specs['rcx_params']
+    results_dir = specs['results_dir']
 
+    results_dir = os.path.abspath(results_dir)
+
+    temp_db = make_tdb(prj, specs)
+
+    # get sweep parameters
     var_list = []
     swp_val_list = []
     for var_name, val_list in specs['sweep_params'].items():
         var_list.append(var_name)
         swp_val_list.append(val_list)
 
-    sim_info_list = []
+    # make schematic, layout, and start LVS jobs
+    job_info_list = []
     for combo_list in itertools.product(*swp_val_list):
-        dsn_name = 'mos_analogbase'
-        tb_name = 'mos_analogbase_tb_sp'
+        dsn_name = 'MOS'
+        tb_name = 'TB_MOS'
         cur_params = dict(zip(var_list, combo_list))
         for name, val in cur_params.items():
             sch_params[name] = val
@@ -95,45 +96,73 @@ def characterize(prj, specs):
             dsn_name += suffix
             tb_name += suffix
 
-        print('design: %s' % dsn_name)
+        print('create schematic/testbench for %s' % dsn_name)
         generate_sch(prj, specs, sch_params, dsn_name, tb_name)
-        """
-        generate_lay(prj, specs, sch_params, dsn_name)
-        print('running lvs')
-        lvs_passed, lvs_log = prj.run_lvs(impl_lib, dsn_name)
-        if not lvs_passed:
-            raise Exception('oops lvs died.  See LVS log file %s' % lvs_log)
-        print('lvs passed')
+        print('create layout for %s' % dsn_name)
+        lay_params = generate_lay(prj, specs, sch_params, dsn_name, temp_db)
+        print('start lvs job')
+        lvs_id, lvs_log = prj.run_lvs(impl_lib, dsn_name, block=False)
+        job_info_list.append([tb_name, dsn_name, lay_params, lvs_id, lvs_log])
 
-        print('running rcx')
-        rcx_passed, rcx_log = prj.run_rcx(impl_lib, dsn_name, rcx_params=rcx_params)
+    # start RCX jobs
+    for idx in range(len(job_info_list)):
+        tb_name, dsn_name, lay_params, lvs_id, lvs_log = job_info_list[idx]
+        print('wait for %s LVS to finish' % dsn_name)
+        lvs_passed = prj.wait_lvs_rcx(lvs_id)
+        if not lvs_passed:
+            raise Exception('oops lvs died for %s.  See LVS log file %s' % (dsn_name, lvs_log))
+        print('lvs passed.  start rcx for %s' % dsn_name)
+        rcx_id, rcx_log = prj.run_rcx(impl_lib, dsn_name, block=False, rcx_params=rcx_params)
+        job_info_list[idx][3] = rcx_id
+        job_info_list[idx][4] = rcx_log
+
+    # configure testbench and start simulations
+    for idx in range(len(job_info_list)):
+        tb_name, dsn_name, lay_params, rcx_id, rcx_log = job_info_list[idx]
+        print('wait for %s RCX to finish' % dsn_name)
+        rcx_passed = prj.wait_lvs_rcx(rcx_id)
         if not rcx_passed:
-            raise Exception('oops rcx died.  See RCX log file %s' % rcx_log)
-        print('rcx passed')
-        """
-        print('create testbench')
+            raise Exception('oops rcx died for %s.  See RCX log file %s' % (dsn_name, rcx_log))
+        print('rcx passed.  setup testbench %s' % tb_name)
         tb = prj.configure_testbench(impl_lib, tb_name)
         for key, val in tb_params.items():
             tb.set_parameter(key, val)
         tb.set_simulation_environments(sim_envs)
         tb.set_simulation_view(impl_lib, dsn_name, view_name)
         tb.update_testbench()
-        print('start simulation')
+        print('start simulation for %s' % tb_name)
         sim_id = tb.run_simulation(sim_tag=tb_name, block=False)
-        sim_info_list.append((tb_name, cur_params, sim_id))
+        job_info_list[idx][3] = sim_id
+        job_info_list[idx][4] = tb
 
-    tb_results = []
-    for tb_name, cur_params, sim_id in sim_info_list:
-        print('wait for simulation of %s to finish' % tb_name)
-        save_dir, retcode = prj.sim.wait(sim_id)
+    for tb_name, dsn_name, lay_params, sim_id, tb in job_info_list:
+        print('wait for %s to finish' % tb_name)
+        save_dir = tb.wait()
         print('simulation done.')
-        if retcode is not None:
-            tb_results.append((tb_name, cur_params, save_dir))
+        if save_dir is not None:
+            try:
+                cur_results = load_sim_results(save_dir)
+            except:
+                print('Error when loading results for %s' % tb_name)
+                cur_results = None
         else:
-            tb_results.append((tb_name, cur_params, None))
+            cur_results = None
+
+        cur_result_dir = os.path.join(results_dir, tb_name)
+        os.makedirs(cur_result_dir, exist_ok=True)
+
+        info = dict(
+            tb_name=tb_name,
+            dsn_name=dsn_name,
+            save_dir=save_dir,
+            lay_params=lay_params,
+        )
+        with open(os.path.join(cur_result_dir, 'info.yaml'), 'w') as info_file:
+            yaml.dump(info, info_file)
+        if cur_results is not None:
+            save_sim_results(cur_results, os.path.join(cur_result_dir, 'data.hdf5'))
 
     print('characterization done.')
-    return tb_results
 
 if __name__ == '__main__':
 
