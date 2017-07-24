@@ -2,6 +2,7 @@
 
 import os
 import itertools
+import math
 
 import yaml
 import numpy as np
@@ -177,13 +178,14 @@ def characterize(prj, specs):
     print('characterization done.')
 
 
-def process_data(results_dir):
+def process_data(data_dir, results_file):
     ibias_name = 'ibias'
 
-    specs = read_yaml(os.path.join(results_dir, 'specs.yaml'))
+    specs = read_yaml(os.path.join(data_dir, 'specs.yaml'))
 
     ibias_min_fg = specs['ibias_min_fg']
     ibias_max_fg = specs['ibias_max_fg']
+    vgs_res = specs['vgs_resolution']
 
     # get sweep parameters
     tb_name_base = specs['tb_name_base']
@@ -192,9 +194,10 @@ def process_data(results_dir):
     var_list = sorted(swp_par_dict.keys())
     swp_val_list = [swp_par_dict[var] for var in var_list]
 
+    ans = {}
     for combo_list in itertools.product(*swp_val_list):
-        _, tb_name = get_tb_dsn_name(dsn_name_base, tb_name_base, var_list, combo_list)
-        data_folder = os.path.join(results_dir, tb_name)
+        dsn_name, tb_name = get_tb_dsn_name(dsn_name_base, tb_name_base, var_list, combo_list)
+        data_folder = os.path.join(data_dir, tb_name)
         data_file = os.path.join(data_folder, 'data.hdf5')
         info_file = os.path.join(data_folder, 'info.yaml')
         info = read_yaml(info_file)
@@ -210,11 +213,19 @@ def process_data(results_dir):
         wv_min = Waveform(vgs, np.amin(ibias, corner_idx), 1e-6, order=2)
         vgs_min = wv_min.get_crossing(ibias_min_fg * fg)
         vgs_max = wv_max.get_crossing(ibias_max_fg * fg)
+        vgs_min = math.floor(vgs_min / vgs_res) * vgs_res
+        vgs_max = math.ceil(vgs_max / vgs_res) * vgs_res
         print('%s: vgs = [%.4g, %.4g]' % (tb_name, vgs_min, vgs_max))
+        ans[dsn_name] = [vgs_min, vgs_max]
+
+    with open(results_file, 'w') as f:
+        yaml.dump(ans, f)
+
 
 if __name__ == '__main__':
 
     config_file = 'mos_char_specs/mos_tb_ibias.yaml'
+    vgs_file = 'mos_char_specs/vgs_specs.yaml'
     block_specs = read_yaml(config_file)
 
     local_dict = locals()
@@ -227,4 +238,4 @@ if __name__ == '__main__':
         bprj = local_dict['bprj']
 
     # characterize(bprj, block_specs)
-    process_data(block_specs['results_dir'])
+    process_data(block_specs['results_dir'], vgs_file)
