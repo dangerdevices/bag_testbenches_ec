@@ -58,6 +58,19 @@ def generate_sch(prj, specs, sch_params, dsn_cell_name, tb_cell_name):
     tb_sch.implement_design(impl_lib, top_cell_name=tb_cell_name, erase=True)
 
 
+def get_tb_dsn_name(dsn_name_base, tb_name_base, var_list, combo_list):
+    suffix = ''
+    for var, val in zip(var_list, combo_list):
+        if isinstance(val, str):
+            suffix += '_%s_%s' % (var, val)
+        elif isinstance(val, int):
+            suffix += '_%s_%d' % (var, val)
+        else:
+            suffix += '_%s_%s' % (var, float_to_si_string(val))
+
+    return dsn_name_base + suffix, tb_name_base + suffix
+
+
 def characterize(prj, specs):
     sch_params = specs['sch_params'].copy()
     tb_params = specs['tb_params']
@@ -66,35 +79,27 @@ def characterize(prj, specs):
     sim_envs = specs['sim_envs']
     rcx_params = specs['rcx_params']
     results_dir = specs['results_dir']
+    dsn_name_base = specs['dsn_name_base']
+    tb_name_base = specs['tb_name_base']
 
     results_dir = os.path.abspath(results_dir)
+    os.makedirs(results_dir, exist_ok=True)
+    with open(os.path.join(results_dir, 'specs.yaml'), 'w') as specs_file:
+        yaml.dump(specs, specs_file)
 
     temp_db = make_tdb(prj, specs)
 
     # get sweep parameters
-    var_list = []
-    swp_val_list = []
-    for var_name, val_list in specs['sweep_params'].items():
-        var_list.append(var_name)
-        swp_val_list.append(val_list)
+    swp_par_dict = specs['sweep_params']
+    var_list = sorted(swp_par_dict.keys())
+    swp_val_list = [swp_par_dict[var] for var in var_list]
 
     # make schematic, layout, and start LVS jobs
     job_info_list = []
     for combo_list in itertools.product(*swp_val_list):
-        dsn_name = 'MOS'
-        tb_name = 'TB_MOS'
-        cur_params = dict(zip(var_list, combo_list))
-        for name, val in cur_params.items():
+        dsn_name, tb_name = get_tb_dsn_name(dsn_name_base, tb_name_base, var_list, combo_list)
+        for name, val in zip(var_list, combo_list):
             sch_params[name] = val
-            if isinstance(val, str):
-                suffix = '_%s_%s' % (name, val)
-            elif isinstance(val, int):
-                suffix = '_%s_%d' % (name, val)
-            else:
-                suffix = '_%s_%s' % (name, float_to_si_string(val))
-
-            dsn_name += suffix
-            tb_name += suffix
 
         print('create schematic/testbench for %s' % dsn_name)
         generate_sch(prj, specs, sch_params, dsn_name, tb_name)
@@ -166,9 +171,9 @@ def characterize(prj, specs):
 
 if __name__ == '__main__':
 
-    spec_file = 'mos_char_specs/mos_tb_ibias.yaml'
+    config_file = 'mos_char_specs/mos_tb_ibias.yaml'
 
-    with open(spec_file, 'r') as f:
+    with open(config_file, 'r') as f:
         block_specs = yaml.load(f)
 
     local_dict = locals()
