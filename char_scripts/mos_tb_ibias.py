@@ -1,15 +1,22 @@
 # -*- coding: utf-8 -*-
 
 import os
-import yaml
 import itertools
+
+import yaml
+import numpy as np
 
 from bag import float_to_si_string
 from bag.core import BagProject
-from bag.data import load_sim_results, save_sim_results
+from bag.data import load_sim_results, save_sim_results, load_sim_file, Waveform
 from bag.layout import RoutingGrid, TemplateDB
 
 from abs_templates_ec.mos_char import Transistor
+
+
+def read_yaml(fname):
+    with open(fname, 'r') as f:
+        return yaml.load(f)
 
 
 def make_tdb(prj, specs):
@@ -169,12 +176,46 @@ def characterize(prj, specs):
 
     print('characterization done.')
 
+
+def process_data(results_dir):
+    ibias_name = 'ibias'
+
+    specs = read_yaml(os.path.join(results_dir, 'specs.yaml'))
+
+    ibias_min_fg = specs['ibias_min_fg']
+    ibias_max_fg = specs['ibias_max_fg']
+
+    # get sweep parameters
+    tb_name_base = specs['tb_name_base']
+    dsn_name_base = specs['dsn_name_base']
+    swp_par_dict = specs['sweep_params']
+    var_list = sorted(swp_par_dict.keys())
+    swp_val_list = [swp_par_dict[var] for var in var_list]
+
+    for combo_list in itertools.product(*swp_val_list):
+        _, tb_name = get_tb_dsn_name(dsn_name_base, tb_name_base, var_list, combo_list)
+        data_folder = os.path.join(results_dir, tb_name)
+        data_file = os.path.join(data_folder, 'data.hdf5')
+        info_file = os.path.join(data_folder, 'info.yaml')
+        info = read_yaml(info_file)
+        fg = info['lay_params']['fg']
+
+        results = load_sim_file(data_file)
+        # assume first sweep parameter is corner, second sweep parameter is vgs
+        corner_idx = results['sweep_params'][ibias_name].index('corner')
+        vgs = results['vgs']
+        ibias = results[ibias_name]
+
+        wv_max = Waveform(vgs, np.amax(ibias, corner_idx), 1e-6, order=2)
+        wv_min = Waveform(vgs, np.amin(ibias, corner_idx), 1e-6, order=2)
+        vgs_min = wv_min.get_crossing(ibias_min_fg * fg)
+        vgs_max = wv_max.get_crossing(ibias_max_fg * fg)
+        print('%s: vgs = [%.4g, %.4g]' % (tb_name, vgs_min, vgs_max))
+
 if __name__ == '__main__':
 
     config_file = 'mos_char_specs/mos_tb_ibias.yaml'
-
-    with open(config_file, 'r') as f:
-        block_specs = yaml.load(f)
+    block_specs = read_yaml(config_file)
 
     local_dict = locals()
     if 'bprj' not in local_dict:
@@ -185,4 +226,5 @@ if __name__ == '__main__':
         print('loading BAG project')
         bprj = local_dict['bprj']
 
-    characterize(bprj, block_specs)
+    # characterize(bprj, block_specs)
+    process_data(block_specs['results_dir'])
