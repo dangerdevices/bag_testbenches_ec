@@ -19,7 +19,7 @@ def read_yaml(fname):
 
 def generate_sch(prj, specs, dsn_cell_name, tb_cell_name):
     tb_lib = 'bag_ec_testbenches'
-    tb_cell = 'mos_tb_sp'
+    tb_cell = 'mos_tb_noise'
 
     impl_lib = specs['impl_lib']
 
@@ -71,8 +71,8 @@ def characterize(prj, specs):
         cur_tb_params = tb_params.copy()
         dsn_name, tb_name = get_tb_dsn_name(dsn_name_base, tb_name_base, var_list, combo_list)
         vgs_min, vgs_max = vgs_info[dsn_name]
-        cur_tb_params['vgs_start'] = vgs_min
-        cur_tb_params['vgs_stop'] = vgs_max
+        vgs_num = tb_sweep['vgs_num']
+
         print('create testbench for %s' % dsn_name)
         generate_sch(prj, specs, dsn_name, tb_name)
 
@@ -81,8 +81,11 @@ def characterize(prj, specs):
         for key, val in cur_tb_params.items():
             tb.set_parameter(key, val)
         vds_vals = np.linspace(tb_sweep['vds_start'], vgs_max, tb_sweep['vds_num'])
+        # S parameter sweep adds 1 to vgs_num
+        vgs_vals = np.linspace(vgs_min, vgs_max, vgs_num + 1)
         tb.set_sweep_parameter('vds', values=vds_vals)
         tb.set_sweep_parameter('vbs', values=tb_sweep['vbs'])
+        tb.set_sweep_parameter('vgs', values=vgs_vals)
         tb.set_simulation_environments(sim_envs)
         tb.set_simulation_view(impl_lib, dsn_name, view_name)
         tb.update_testbench()
@@ -120,7 +123,7 @@ def characterize(prj, specs):
 
 if __name__ == '__main__':
 
-    config_file = 'mos_char_specs/mos_tb_sp_fine.yaml'
+    config_file = 'mos_char_specs/mos_tb_noise.yaml'
     block_specs = read_yaml(config_file)
 
     local_dict = locals()
