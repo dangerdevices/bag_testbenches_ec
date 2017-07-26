@@ -194,6 +194,8 @@ def process_data(data_dir, results_file):
     var_list = sorted(swp_par_dict.keys())
     swp_val_list = [swp_par_dict[var] for var in var_list]
 
+    ibias_sgn = -1.0 if specs['sch_params']['mos_type'] == 'pch' else 1.0
+
     ans = {}
     for combo_list in itertools.product(*swp_val_list):
         dsn_name, tb_name = get_tb_dsn_name(dsn_name_base, tb_name_base, var_list, combo_list)
@@ -207,12 +209,14 @@ def process_data(data_dir, results_file):
         # assume first sweep parameter is corner, second sweep parameter is vgs
         corner_idx = results['sweep_params'][ibias_name].index('corner')
         vgs = results['vgs']
-        ibias = results[ibias_name]
+        ibias = results[ibias_name] * ibias_sgn  # type: np.ndarray
 
         wv_max = Waveform(vgs, np.amax(ibias, corner_idx), 1e-6, order=2)
         wv_min = Waveform(vgs, np.amin(ibias, corner_idx), 1e-6, order=2)
         vgs_min = wv_min.get_crossing(ibias_min_fg * fg)
         vgs_max = wv_max.get_crossing(ibias_max_fg * fg)
+        if vgs_min > vgs_max:
+            vgs_min, vgs_max = vgs_max, vgs_min
         vgs_min = math.floor(vgs_min / vgs_res) * vgs_res
         vgs_max = math.ceil(vgs_max / vgs_res) * vgs_res
         print('%s: vgs = [%.4g, %.4g]' % (tb_name, vgs_min, vgs_max))
@@ -224,8 +228,8 @@ def process_data(data_dir, results_file):
 
 if __name__ == '__main__':
 
-    config_file = 'mos_char_specs/mos_tb_ibias.yaml'
-    vgs_file = 'mos_char_specs/vgs_specs.yaml'
+    config_file = 'mos_char_specs/mos_tb_ibias_pch.yaml'
+    vgs_file = 'mos_char_specs/vgs_specs_pch.yaml'
     block_specs = read_yaml(config_file)
 
     local_dict = locals()

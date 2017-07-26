@@ -2,14 +2,13 @@
 
 import os
 import itertools
-import math
 
 import yaml
 import numpy as np
 
 from bag import float_to_si_string
 from bag.core import BagProject
-from bag.data import load_sim_results, save_sim_results, load_sim_file, Waveform
+from bag.data import load_sim_results, save_sim_results
 
 
 def read_yaml(fname):
@@ -67,6 +66,8 @@ def characterize(prj, specs):
 
     # make schematic and start simulation jobs
     job_info_list = []
+    vds_start = tb_sweep['vds_start']
+    vds_num = tb_sweep['vds_num']
     for combo_list in itertools.product(*swp_val_list):
         cur_tb_params = tb_params.copy()
         dsn_name, tb_name = get_tb_dsn_name(dsn_name_base, tb_name_base, var_list, combo_list)
@@ -80,7 +81,13 @@ def characterize(prj, specs):
 
         for key, val in cur_tb_params.items():
             tb.set_parameter(key, val)
-        vds_vals = np.linspace(tb_sweep['vds_start'], vgs_max, tb_sweep['vds_num'])
+
+        vds_end = vgs_min if abs(vgs_min) > abs(vgs_max) else vgs_max
+
+        if vds_start < vds_end:
+            vds_vals = np.linspace(vds_start, vds_end, vds_num)
+        else:
+            vds_vals = np.linspace(vds_end, vds_start, vds_num)
         # S parameter sweep adds 1 to vgs_num
         vgs_vals = np.linspace(vgs_min, vgs_max, vgs_num + 1)
         tb.set_sweep_parameter('vds', values=vds_vals)
@@ -123,7 +130,7 @@ def characterize(prj, specs):
 
 if __name__ == '__main__':
 
-    config_file = 'mos_char_specs/mos_tb_noise.yaml'
+    config_file = 'mos_char_specs/mos_tb_noise_pch.yaml'
     block_specs = read_yaml(config_file)
 
     local_dict = locals()
