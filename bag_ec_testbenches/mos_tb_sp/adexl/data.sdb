@@ -50,6 +50,35 @@
 						<value>schematic</value>
 					</option>
 				</origoptions>
+				<outputs>
+					<output>y11
+						<evalType>point</evalType>
+					</output>
+					<output>y13
+						<evalType>point</evalType>
+					</output>
+					<output>y12
+						<evalType>point</evalType>
+					</output>
+					<output>y21
+						<evalType>point</evalType>
+					</output>
+					<output>y22
+						<evalType>point</evalType>
+					</output>
+					<output>y23
+						<evalType>point</evalType>
+					</output>
+					<output>y31
+						<evalType>point</evalType>
+					</output>
+					<output>y32
+						<evalType>point</evalType>
+					</output>
+					<output>y33
+						<evalType>point</evalType>
+					</output>
+				</outputs>
 			</test>
 		</tests>
 		<vars>

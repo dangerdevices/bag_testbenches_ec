@@ -1,4 +1,4 @@
-(envOpts analysisOrder) ("sp")
+(envOpts analysisOrder) ("sp" "dc")
 (envOpts autoDisplay) t
 (envOpts cmd64bit) nil
 (envOpts cpfIsVMSEnabled) t
