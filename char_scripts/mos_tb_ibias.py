@@ -49,9 +49,7 @@ def generate_lay(prj, specs, sch_params, cell_name, temp_db):
     return layout_params
 
 
-def generate_sch(prj, specs, sch_params, dsn_cell_name, tb_cell_name):
-    tb_lib = 'bag_ec_testbenches'
-    tb_cell = 'mos_tb_ibias'
+def generate_dsn_sch(prj, specs, sch_params, dsn_cell_name):
     dut_lib = 'bag_ec_testbenches'
     dut_cell = 'mos_analogbase'
 
@@ -60,6 +58,15 @@ def generate_sch(prj, specs, sch_params, dsn_cell_name, tb_cell_name):
     dsn = prj.create_design_module(dut_lib, dut_cell)
     dsn.design(**sch_params)
     dsn.implement_design(impl_lib, top_cell_name=dsn_cell_name, erase=True)
+
+
+def generate_sch(prj, specs, sch_params, dsn_cell_name, tb_cell_name):
+    tb_lib = 'bag_ec_testbenches'
+    tb_cell = 'mos_tb_ibias'
+
+    impl_lib = specs['impl_lib']
+
+    generate_dsn_sch(prj, specs, sch_params, dsn_cell_name)
 
     tb_sch = prj.create_design_module(tb_lib, tb_cell)
     tb_sch.design(dut_lib=impl_lib, dut_cell=dsn_cell_name)
@@ -77,6 +84,16 @@ def get_tb_dsn_name(dsn_name_base, tb_name_base, var_list, combo_list):
             suffix += '_%s_%s' % (var, float_to_si_string(val))
 
     return dsn_name_base + suffix, tb_name_base + suffix
+
+
+def test_layout(prj, specs):
+    sch_params = specs['sch_params'].copy()
+    dsn_name = specs['dsn_name_base'] + "_TEST"
+
+    temp_db = make_tdb(prj, specs)
+
+    generate_dsn_sch(prj, specs, sch_params, dsn_name)
+    generate_lay(prj, specs, sch_params, dsn_name, temp_db)
 
 
 def characterize(prj, specs):
@@ -228,8 +245,8 @@ def process_data(data_dir, results_file):
 
 if __name__ == '__main__':
 
-    config_file = 'mos_char_specs/mos_tb_ibias_pch.yaml'
-    vgs_file = 'mos_char_specs/vgs_specs_pch.yaml'
+    config_file = 'mos_char_specs/mos_tb_ibias_pch_stack.yaml'
+    vgs_file = 'mos_char_specs/vgs_specs_pch_stack.yaml'
     block_specs = read_yaml(config_file)
 
     local_dict = locals()
@@ -241,5 +258,6 @@ if __name__ == '__main__':
         print('loading BAG project')
         bprj = local_dict['bprj']
 
-    # characterize(bprj, block_specs)
+    characterize(bprj, block_specs)
     process_data(block_specs['results_dir'], vgs_file)
+    # test_layout(bprj, block_specs)

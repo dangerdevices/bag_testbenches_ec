@@ -127,7 +127,7 @@ def characterize(prj, specs):
 
 if __name__ == '__main__':
 
-    config_file = 'mos_char_specs/mos_tb_sp_fine_pch.yaml'
+    config_file = 'mos_char_specs/mos_tb_sp_fine_pch_stack.yaml'
     block_specs = read_yaml(config_file)
 
     local_dict = locals()
