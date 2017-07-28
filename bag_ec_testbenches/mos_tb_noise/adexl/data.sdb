@@ -56,6 +56,11 @@
 						<value>spectre_state1</value>
 					</option>
 				</origoptions>
+				<outputs>
+					<output>idn
+						<evalType>point</evalType>
+					</output>
+				</outputs>
 			</test>
 		</tests>
 		<vars>
