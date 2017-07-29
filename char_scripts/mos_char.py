@@ -1,0 +1,181 @@
+# -*- coding: utf-8 -*-
+
+import math
+
+from typing import List, Any, Tuple, Dict
+
+import yaml
+import numpy as np
+
+from bag.io import read_yaml
+from bag.core import BagProject, Testbench
+from bag.data import Waveform
+from bag.tech.core import SimulationManager
+
+
+class MOSCharSim(SimulationManager):
+    """A class that handles transistor characterization."""
+    def __init__(self, prj, spec_file):
+        super(MOSCharSim, self).__init__(prj, spec_file)
+
+    def get_sch_lay_params(self, val_list):
+        # type: (List[Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]
+        sch_params = self.specs['sch_params'].copy()
+        lay_params = self.specs['layout_params'].copy()
+        for var, val in zip(self.swp_var_list, val_list):
+            sch_params[var] = val
+
+        lay_params['mos_type'] = sch_params['mos_type']
+        lay_params['lch'] = sch_params['l']
+        lay_params['w'] = sch_params['w']
+        lay_params['threshold'] = sch_params['intent']
+        lay_params['stack'] = sch_params['stack']
+        lay_params['fg'] = sch_params['nf']
+        lay_params['fg_dum'] = sch_params['ndum']
+        return sch_params, lay_params
+
+    def is_nmos(self, val_list):
+        # type: (Tuple[Any, ...]) -> bool
+        """Given current schematic parameter values, returns True if we're working with NMOS.."""
+        try:
+            # see if mos_type is one of the sweep.
+            idx = self.swp_var_list.index('mos_type')
+            return val_list[idx] == 'nch'
+        except:
+            # mos_type is not one of the sweep.
+            return self.specs['sch_params']['mos_type'] == 'nch'
+
+    def configure_tb(self, tb_type, tb, val_list):
+        # type: (str, Testbench, Tuple[Any, ...]) -> None
+
+        tb_specs = self.specs[tb_type]
+        sim_envs = self.specs['sim_envs']
+        view_name = self.specs['view_name']
+        impl_lib = self.specs['impl_lib']
+        dsn_name_base = self.specs['dsn_name_base']
+
+        tb_params = tb_specs['tb_params']
+        dsn_name = self.get_instance_name(dsn_name_base, val_list)
+        is_nmos = self.is_nmos(val_list)
+
+        tb.set_simulation_environments(sim_envs)
+        tb.set_simulation_view(impl_lib, dsn_name, view_name)
+
+        if tb_type == 'tb_ibias':
+            tb.set_parameter('vgs_num', tb_params['vgs_num'])
+
+            # handle VGS sign for nmos/pmos
+            vgs_max = tb_params['vgs_max']
+            if is_nmos:
+                tb.set_parameter('vs', 0.0)
+                tb.set_parameter('vgs_start', 0.0)
+                tb.set_parameter('vgs_stop', vgs_max)
+            else:
+                tb.set_parameter('vs', vgs_max)
+                tb.set_parameter('vgs_start', -vgs_max)
+                tb.set_parameter('vgs_stop', 0.0)
+        else:
+            vgs_file = self.specs['vgs_file']
+            vgs_info = read_yaml(vgs_file)
+            vgs_start, vgs_stop = vgs_info[dsn_name]
+
+            if tb_type == 'tb_sp':
+                tb.set_parameter('vgs_num', tb_params['vgs_num'])
+                tb.set_parameter('sp_freq', tb_params['sp_freq'])
+                tb.set_parameter('vbs', tb_params['vbs'])
+
+                vds_min = tb_params['vds_min']
+                vds_num = tb_params['vds_num']
+                tb.set_parameter('vgs_start', vgs_start)
+                tb.set_parameter('vgs_stop', vgs_stop)
+                # handle VDS/VGS sign for nmos/pmos
+                if is_nmos:
+                    vds_vals = np.linspace(vds_min, vgs_stop, vds_num + 1)
+                    tb.set_sweep_parameter('vds', values=vds_vals)
+                    tb.set_sweep_parameter('vb_dc', 0)
+                else:
+                    vds_vals = np.linspace(vgs_start, -vds_min, vds_num + 1)
+                    tb.set_sweep_parameter('vds', values=vds_vals)
+                    tb.set_sweep_parameter('vb_dc', abs(vgs_start))
+            elif tb_type == 'tb_noise':
+                tb.set_parameter('freq_start', tb_params['freq_start'])
+                tb.set_parameter('freq_stop', tb_params['freq_stop'])
+                tb.set_parameter('num_per_dec', tb_params['num_per_dec'])
+                tb.set_parameter('vbs', tb_params['vbs'])
+
+                vds_min = tb_params['vds_min']
+                vds_num = tb_params['vds_num']
+                vgs_num = tb_params['vgs_num']
+                vgs_vals = np.linspace(vgs_start, vgs_stop, vgs_num + 1)
+                # handle VDS/VGS sign for nmos/pmos
+                if is_nmos:
+                    vds_vals = np.linspace(vds_min, vgs_stop, vds_num + 1)
+                    tb.set_sweep_parameter('vds', values=vds_vals)
+                    tb.set_sweep_parameter('vgs', values=vgs_vals)
+                    tb.set_sweep_parameter('vb_dc', 0)
+                else:
+                    vds_vals = np.linspace(vgs_start, -vds_min, vds_num + 1)
+                    tb.set_sweep_parameter('vds', values=vds_vals)
+                    tb.set_sweep_parameter('vgs', values=vgs_vals)
+                    tb.set_sweep_parameter('vb_dc', abs(vgs_start))
+            else:
+                raise ValueError('Unknown testbench type: %s' % tb_type)
+
+
+def process_ibias_data(mos_sim):
+    # type: (MOSCharSim) -> None
+    tb_type = 'tb_ibias'
+    tb_specs = mos_sim.specs[tb_type]
+    dsn_name_base = mos_sim.specs['dsn_name_base']
+    vgs_file = mos_sim.specs['vgs_file']
+
+    ibias_min_fg = tb_specs['ibias_min_fg']
+    ibias_max_fg = tb_specs['ibias_max_fg']
+    vgs_res = tb_specs['vgs_resolution']
+
+    ans = {}
+    for val_list in mos_sim.get_combinations_iter():
+        # invert PMOS ibias sign
+        ibias_sgn = 1.0 if mos_sim.is_nmos(val_list) else -1.0
+
+        info, results = mos_sim.get_sim_results(tb_type, val_list)
+        fg = info['lay_params']['fg']
+
+        # assume first sweep parameter is corner, second sweep parameter is vgs
+        corner_idx = results['sweep_params']['ibias'].index('corner')
+        vgs = results['vgs']
+        ibias = results['ibias'] * ibias_sgn  # type: np.ndarray
+
+        wv_max = Waveform(vgs, np.amax(ibias, corner_idx), 1e-6, order=2)
+        wv_min = Waveform(vgs, np.amin(ibias, corner_idx), 1e-6, order=2)
+        vgs_min = wv_min.get_crossing(ibias_min_fg * fg)
+        vgs_max = wv_max.get_crossing(ibias_max_fg * fg)
+        if vgs_min > vgs_max:
+            vgs_min, vgs_max = vgs_max, vgs_min
+        vgs_min = math.floor(vgs_min / vgs_res) * vgs_res
+        vgs_max = math.ceil(vgs_max / vgs_res) * vgs_res
+
+        dsn_name = mos_sim.get_instance_name(dsn_name_base, val_list)
+        print('%s: vgs = [%.4g, %.4g]' % (dsn_name, vgs_min, vgs_max))
+        ans[dsn_name] = [vgs_min, vgs_max]
+
+    with open(vgs_file, 'w') as f:
+        yaml.dump(ans, f)
+
+
+if __name__ == '__main__':
+
+    config_file = 'mos_char_specs/mos_tb_ibias_pch_stack.yaml'
+    block_specs = read_yaml(config_file)
+
+    local_dict = locals()
+    if 'bprj' not in local_dict:
+        print('creating BAG project')
+        bprj = BagProject()
+
+    else:
+        print('loading BAG project')
+        bprj = local_dict['bprj']
+
+    sim = MOSCharSim(bprj, block_specs)
+    process_ibias_data(sim)
