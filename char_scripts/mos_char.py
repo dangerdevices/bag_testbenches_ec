@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 
+import os
 import math
-
-from typing import List, Any, Tuple, Dict
+from typing import Any, Tuple, Dict
 
 import yaml
 import numpy as np
 
-from bag.io import read_yaml
+from bag.io import read_yaml, open_file
 from bag.core import BagProject, Testbench
 from bag.data import Waveform
 from bag.tech.core import SimulationManager
@@ -19,7 +19,7 @@ class MOSCharSim(SimulationManager):
         super(MOSCharSim, self).__init__(prj, spec_file)
 
     def get_sch_lay_params(self, val_list):
-        # type: (List[Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]
+        # type: (Tuple[Any, ...]) -> Tuple[Dict[str, Any], Dict[str, Any]]
         sch_params = self.specs['sch_params'].copy()
         lay_params = self.specs['layout_params'].copy()
         for var, val in zip(self.swp_var_list, val_list):
@@ -44,6 +44,12 @@ class MOSCharSim(SimulationManager):
         except:
             # mos_type is not one of the sweep.
             return self.specs['sch_params']['mos_type'] == 'nch'
+
+    def get_vgs_specs(self):
+        # type: () -> Dict[str, Any]
+        """laods VGS specifications from file and return it as dictionary."""
+        vgs_file = os.path.join(self.specs['root_dir'], self.specs['vgs_file'])
+        return read_yaml(vgs_file)
 
     def configure_tb(self, tb_type, tb, val_list):
         # type: (str, Testbench, Tuple[Any, ...]) -> None
@@ -75,8 +81,7 @@ class MOSCharSim(SimulationManager):
                 tb.set_parameter('vgs_start', -vgs_max)
                 tb.set_parameter('vgs_stop', 0.0)
         else:
-            vgs_file = self.specs['vgs_file']
-            vgs_info = read_yaml(vgs_file)
+            vgs_info = self.get_vgs_specs()
             vgs_start, vgs_stop = vgs_info[dsn_name]
 
             if tb_type == 'tb_sp':
@@ -121,51 +126,65 @@ class MOSCharSim(SimulationManager):
             else:
                 raise ValueError('Unknown testbench type: %s' % tb_type)
 
+    def process_ibias_data(self, write=True):
+        # type: () -> None
+        tb_type = 'tb_ibias'
+        tb_specs = self.specs[tb_type]
+        dsn_name_base = self.specs['dsn_name_base']
+        root_dir = self.specs['root_dir']
+        vgs_file = self.specs['vgs_file']
+        sch_params = self.specs['sch_params']
 
-def process_ibias_data(mos_sim):
-    # type: (MOSCharSim) -> None
-    tb_type = 'tb_ibias'
-    tb_specs = mos_sim.specs[tb_type]
-    dsn_name_base = mos_sim.specs['dsn_name_base']
-    vgs_file = mos_sim.specs['vgs_file']
+        fg = sch_params['nf']
+        ibias_min_fg = tb_specs['ibias_min_fg']
+        ibias_max_fg = tb_specs['ibias_max_fg']
+        vgs_res = tb_specs['vgs_resolution']
 
-    ibias_min_fg = tb_specs['ibias_min_fg']
-    ibias_max_fg = tb_specs['ibias_max_fg']
-    vgs_res = tb_specs['vgs_resolution']
+        ans = {}
+        for val_list in self.get_combinations_iter():
+            # invert PMOS ibias sign
+            ibias_sgn = 1.0 if self.is_nmos(val_list) else -1.0
+            results = self.get_sim_results(tb_type, val_list)
 
-    ans = {}
-    for val_list in mos_sim.get_combinations_iter():
-        # invert PMOS ibias sign
-        ibias_sgn = 1.0 if mos_sim.is_nmos(val_list) else -1.0
+            # assume first sweep parameter is corner, second sweep parameter is vgs
+            corner_idx = results['sweep_params']['ibias'].index('corner')
+            vgs = results['vgs']
+            ibias = results['ibias'] * ibias_sgn  # type: np.ndarray
 
-        info, results = mos_sim.get_sim_results(tb_type, val_list)
-        fg = info['lay_params']['fg']
+            wv_max = Waveform(vgs, np.amax(ibias, corner_idx), 1e-6, order=2)
+            wv_min = Waveform(vgs, np.amin(ibias, corner_idx), 1e-6, order=2)
+            vgs_min = wv_min.get_crossing(ibias_min_fg * fg)
+            vgs_max = wv_max.get_crossing(ibias_max_fg * fg)
+            if vgs_min > vgs_max:
+                vgs_min, vgs_max = vgs_max, vgs_min
+            vgs_min = math.floor(vgs_min / vgs_res) * vgs_res
+            vgs_max = math.ceil(vgs_max / vgs_res) * vgs_res
 
-        # assume first sweep parameter is corner, second sweep parameter is vgs
-        corner_idx = results['sweep_params']['ibias'].index('corner')
-        vgs = results['vgs']
-        ibias = results['ibias'] * ibias_sgn  # type: np.ndarray
+            dsn_name = self.get_instance_name(dsn_name_base, val_list)
+            print('%s: vgs = [%.4g, %.4g]' % (dsn_name, vgs_min, vgs_max))
+            ans[dsn_name] = [vgs_min, vgs_max]
 
-        wv_max = Waveform(vgs, np.amax(ibias, corner_idx), 1e-6, order=2)
-        wv_min = Waveform(vgs, np.amin(ibias, corner_idx), 1e-6, order=2)
-        vgs_min = wv_min.get_crossing(ibias_min_fg * fg)
-        vgs_max = wv_max.get_crossing(ibias_max_fg * fg)
-        if vgs_min > vgs_max:
-            vgs_min, vgs_max = vgs_max, vgs_min
-        vgs_min = math.floor(vgs_min / vgs_res) * vgs_res
-        vgs_max = math.ceil(vgs_max / vgs_res) * vgs_res
+        if write:
+            vgs_file = os.path.join(root_dir, vgs_file)
+            with open_file(vgs_file, 'w') as f:
+                yaml.dump(ans, f)
 
-        dsn_name = mos_sim.get_instance_name(dsn_name_base, val_list)
-        print('%s: vgs = [%.4g, %.4g]' % (dsn_name, vgs_min, vgs_max))
-        ans[dsn_name] = [vgs_min, vgs_max]
+    def process_sp_data(self):
+        # type: () -> None
+        tb_type = 'tb_sp'
+        tb_specs = self.specs[tb_type]
+        dsn_name_base = self.specs['dsn_name_base']
+        sch_params = self.specs['sch_params']
 
-    with open(vgs_file, 'w') as f:
-        yaml.dump(ans, f)
+        fg = sch_params['nf']
+        ans = {}
+        for val_list in self.get_combinations_iter():
+            _, results = self.get_sim_results(tb_type, val_list)
 
 
 if __name__ == '__main__':
 
-    config_file = 'mos_char_specs/mos_tb_ibias_pch_stack.yaml'
+    config_file = 'mos_char_specs/mos_char_nch.yaml'
     block_specs = read_yaml(config_file)
 
     local_dict = locals()
@@ -178,4 +197,4 @@ if __name__ == '__main__':
         bprj = local_dict['bprj']
 
     sim = MOSCharSim(bprj, block_specs)
-    process_ibias_data(sim)
+    sim.process_ibias_data(write=False)
