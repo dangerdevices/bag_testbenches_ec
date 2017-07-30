@@ -2,7 +2,7 @@
 
 import os
 import math
-from typing import Any, Tuple, Dict
+from typing import List, Any, Tuple, Dict
 
 import yaml
 import numpy as np
@@ -10,6 +10,7 @@ import numpy as np
 from bag.io import read_yaml, open_file
 from bag.core import BagProject, Testbench
 from bag.data import Waveform
+from bag.data.mos import mos_y_to_ss
 from bag.tech.core import SimulationManager
 
 
@@ -169,17 +170,66 @@ class MOSCharSim(SimulationManager):
             with open_file(vgs_file, 'w') as f:
                 yaml.dump(ans, f)
 
-    def process_sp_data(self):
-        # type: () -> None
+    def get_ss_params(self):
+        # type: () -> Tuple[Tuple[np.array, ...], List[Dict[str, np.ndarray]]]
         tb_type = 'tb_sp'
         tb_specs = self.specs[tb_type]
-        dsn_name_base = self.specs['dsn_name_base']
         sch_params = self.specs['sch_params']
 
         fg = sch_params['nf']
-        ans = {}
+        char_freq = tb_specs['tb_params']['sp_freq']
+
+        axis_names = ['corner', 'vds', 'vgs']
+        xvals = None
+        ss_list = []
         for val_list in self.get_combinations_iter():
-            _, results = self.get_sim_results(tb_type, val_list)
+            results = self.get_sim_results(tb_type, val_list)
+            ibias = results['ibias']
+            ss_dict = mos_y_to_ss(results, char_freq, fg, ibias)
+
+            if xvals is None:
+                xvals = results['corner'], results['vds'], results['vgs']
+
+            # rearrange array axis
+            sweep_params = results['sweep_params']
+            swp_vars = sweep_params['ibias']
+            order = [swp_vars.index(name) for name in axis_names]
+            # just to be safe, we create a list copy to avoid modifying dictionary
+            # while iterating over view.
+            for key in list(ss_dict.keys()):
+                ss_dict[key] = np.transpose(ss_dict[key], axes=order)
+
+            ss_list.append(ss_dict)
+
+        return xvals, ss_list
+
+    def get_noise_psd(self):
+        # type: () -> Tuple[Tuple[np.array, ...], List[Dict[str, np.ndarray]]]
+        tb_type = 'tb_noise'
+        sch_params = self.specs['sch_params']
+
+        fg = sch_params['nf']
+
+        axis_names = ['corner', 'vds', 'vgs', 'freq']
+        output_list = []
+        xvals = None
+        for val_list in self.get_combinations_iter():
+            results = self.get_sim_results(tb_type, val_list)
+            out = results['idn']**2 / fg
+
+            if xvals is None:
+                xvals = results['corner'], results['vds'], results['vgs'], results['freq']
+
+            # rearrange array axis
+            sweep_params = results['sweep_params']
+            swp_vars = sweep_params['idn']
+            order = [swp_vars.index(name) for name in axis_names]
+            # just to be safe, we create a list copy to avoid modifying dictionary
+            # while iterating over view.
+            out = np.transpose(out, axes=order)
+            output_list.append(out)
+
+        return xvals, output_list
 
 
 if __name__ == '__main__':
@@ -196,4 +246,4 @@ if __name__ == '__main__':
         bprj = local_dict['bprj']
 
     sim = MOSCharSim(bprj, config_file)
-    sim.process_ibias_data()
+    # sim.process_ibias_data()
