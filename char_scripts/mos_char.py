@@ -185,7 +185,6 @@ class MOSCharSim(SimulationManager):
 if __name__ == '__main__':
 
     config_file = 'mos_char_specs/mos_char_nch.yaml'
-    block_specs = read_yaml(config_file)
 
     local_dict = locals()
     if 'bprj' not in local_dict:
@@ -196,5 +195,5 @@ if __name__ == '__main__':
         print('loading BAG project')
         bprj = local_dict['bprj']
 
-    sim = MOSCharSim(bprj, block_specs)
-    sim.process_ibias_data(write=False)
+    sim = MOSCharSim(bprj, config_file)
+    sim.process_ibias_data()
