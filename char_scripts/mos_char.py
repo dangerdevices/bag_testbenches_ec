@@ -2,16 +2,18 @@
 
 import os
 import math
-from typing import List, Any, Tuple, Dict
+from typing import List, Any, Tuple, Dict, Optional
 
 import yaml
 import numpy as np
+import scipy.constants
 
 from bag.io import read_yaml, open_file
 from bag.core import BagProject, Testbench
 from bag.data import Waveform
 from bag.data.mos import mos_y_to_ss
 from bag.tech.core import SimulationManager
+from bag.math.interpolate import LinearInterpolator
 
 
 class MOSCharSim(SimulationManager):
@@ -171,7 +173,7 @@ class MOSCharSim(SimulationManager):
                 yaml.dump(ans, f)
 
     def get_ss_params(self):
-        # type: () -> Tuple[Tuple[np.array, ...], List[Dict[str, np.ndarray]]]
+        # type: () -> Tuple[np.multiarray.ndarray, List[Dict[str, LinearInterpolator]]]
         tb_type = 'tb_sp'
         tb_specs = self.specs[tb_type]
         sch_params = self.specs['sch_params']
@@ -180,15 +182,17 @@ class MOSCharSim(SimulationManager):
         char_freq = tb_specs['tb_params']['sp_freq']
 
         axis_names = ['corner', 'vds', 'vgs']
-        xvals = None
+        delta_list = [0.1, 1e-6, 1e-6]
+        corner_list = points = None
         ss_list = []
         for val_list in self.get_combinations_iter():
             results = self.get_sim_results(tb_type, val_list)
             ibias = results['ibias']
             ss_dict = mos_y_to_ss(results, char_freq, fg, ibias)
 
-            if xvals is None:
-                xvals = results['corner'], results['vds'], results['vgs']
+            if corner_list is None:
+                corner_list = results['corner']
+                points = np.arange(len(corner_list)), results['vds'], results['vgs']
 
             # rearrange array axis
             sweep_params = results['sweep_params']
@@ -197,39 +201,62 @@ class MOSCharSim(SimulationManager):
             # just to be safe, we create a list copy to avoid modifying dictionary
             # while iterating over view.
             for key in list(ss_dict.keys()):
-                ss_dict[key] = np.transpose(ss_dict[key], axes=order)
+                new_data = np.transpose(ss_dict[key], axes=order)
+                ss_dict[key] = LinearInterpolator(points, new_data, delta_list, extrapolate=True)
 
             ss_list.append(ss_dict)
 
-        return xvals, ss_list
+        return corner_list, ss_list
 
-    def get_noise_psd(self):
-        # type: () -> Tuple[Tuple[np.array, ...], List[Dict[str, np.ndarray]]]
+    def get_integrated_noise(self, fstart, fstop, scale=1.0):
+        # type: (Optional[float], Optional[float], float) -> Tuple[np.multiarray.ndarray, List[LinearInterpolator]]
         tb_type = 'tb_noise'
         sch_params = self.specs['sch_params']
 
         fg = sch_params['nf']
 
         axis_names = ['corner', 'vds', 'vgs', 'freq']
+        delta_list = [0.1, 1e-6, 1e-6, 0.1]
+        corner_list = log_freq = points = None
         output_list = []
-        xvals = None
         for val_list in self.get_combinations_iter():
             results = self.get_sim_results(tb_type, val_list)
-            out = results['idn']**2 / fg
+            out = np.log(scale / fg * results['idn']**2)
 
-            if xvals is None:
-                xvals = results['corner'], results['vds'], results['vgs'], results['freq']
+            if corner_list is None:
+                corner_list = results['corner']
+                log_freq = np.log(results['freq'])
+                points = np.arange(len(corner_list)), results['vds'], results['vgs'], log_freq
+
+            fstart_log = log_freq[0] if fstart is None else np.log(fstart)
+            fstop_log = log_freq[-1] if fstop is None else np.log(fstop)
 
             # rearrange array axis
             sweep_params = results['sweep_params']
             swp_vars = sweep_params['idn']
             order = [swp_vars.index(name) for name in axis_names]
-            # just to be safe, we create a list copy to avoid modifying dictionary
-            # while iterating over view.
-            out = np.transpose(out, axes=order)
-            output_list.append(out)
+            noise_fun = LinearInterpolator(points, np.transpose(out, axes=order), delta_list, extrapolate=True)
+            integ_noise = noise_fun.integrate(fstart_log, fstop_log, axis=-1, logx=True, logy=True)
+            output_list.append(integ_noise)
 
-        return xvals, output_list
+        return corner_list, output_list
+
+    def get_ss_with_noise(self,
+                          fstart,  # type: Optional[float]
+                          fstop,  # type: Optional[float]
+                          scale=1.0,  # type: float
+                          temp=300,  # type: float
+                          ):
+        # type: (...) -> Tuple[np.multiarray.ndarray, List[Dict[str, LinearInterpolator]]]
+        corner_list, dict_list = self.get_ss_params()
+        _, noise_var_list = self.get_integrated_noise(fstart, fstop, scale=scale)
+
+        k = scale * (fstop - fstart) * 4 * scipy.constants.Boltzmann * temp
+        for cur_dict, noise_var in zip(dict_list, noise_var_list):
+            gm = cur_dict['gm']
+            cur_dict['gamma_eff'] = noise_var / gm / k
+
+        return corner_list, dict_list
 
 
 if __name__ == '__main__':
