@@ -94,16 +94,17 @@ class MOSCharSim(SimulationManager):
                 tb.set_parameter('vbs', tb_params['vbs'])
 
                 vds_min = tb_params['vds_min']
+                vds_max = tb_params['vds_max']
                 vds_num = tb_params['vds_num']
                 tb.set_parameter('vgs_start', vgs_start)
                 tb.set_parameter('vgs_stop', vgs_stop)
                 # handle VDS/VGS sign for nmos/pmos
                 if is_nmos:
-                    vds_vals = np.linspace(vds_min, vgs_stop, vds_num + 1)
+                    vds_vals = np.linspace(vds_min, vds_max, vds_num + 1)
                     tb.set_sweep_parameter('vds', values=vds_vals)
                     tb.set_sweep_parameter('vb_dc', 0)
                 else:
-                    vds_vals = np.linspace(vgs_start, -vds_min, vds_num + 1)
+                    vds_vals = np.linspace(-vds_max, -vds_min, vds_num + 1)
                     tb.set_sweep_parameter('vds', values=vds_vals)
                     tb.set_sweep_parameter('vb_dc', abs(vgs_start))
             elif tb_type == 'tb_noise':
@@ -113,17 +114,18 @@ class MOSCharSim(SimulationManager):
                 tb.set_parameter('vbs', tb_params['vbs'])
 
                 vds_min = tb_params['vds_min']
+                vds_max = tb_params['vds_max']
                 vds_num = tb_params['vds_num']
                 vgs_num = tb_params['vgs_num']
                 vgs_vals = np.linspace(vgs_start, vgs_stop, vgs_num + 1)
                 # handle VDS/VGS sign for nmos/pmos
                 if is_nmos:
-                    vds_vals = np.linspace(vds_min, vgs_stop, vds_num + 1)
+                    vds_vals = np.linspace(vds_min, vds_max, vds_num + 1)
                     tb.set_sweep_parameter('vds', values=vds_vals)
                     tb.set_sweep_parameter('vgs', values=vgs_vals)
                     tb.set_sweep_parameter('vb_dc', 0)
                 else:
-                    vds_vals = np.linspace(vgs_start, -vds_min, vds_num + 1)
+                    vds_vals = np.linspace(-vds_max, -vds_min, vds_num + 1)
                     tb.set_sweep_parameter('vds', values=vds_vals)
                     tb.set_sweep_parameter('vgs', values=vgs_vals)
                     tb.set_sweep_parameter('vb_dc', abs(vgs_start))
@@ -157,8 +159,8 @@ class MOSCharSim(SimulationManager):
 
             wv_max = Waveform(vgs, np.amax(ibias, corner_idx), 1e-6, order=2)
             wv_min = Waveform(vgs, np.amin(ibias, corner_idx), 1e-6, order=2)
-            vgs_min = wv_min.get_crossing(ibias_min_fg * fg)
-            vgs_max = wv_max.get_crossing(ibias_max_fg * fg)
+            vgs_min = wv_max.get_crossing(ibias_min_fg * fg)
+            vgs_max = wv_min.get_crossing(ibias_max_fg * fg)
             if vgs_min > vgs_max:
                 vgs_min, vgs_max = vgs_max, vgs_min
             vgs_min = math.floor(vgs_min / vgs_res) * vgs_res
