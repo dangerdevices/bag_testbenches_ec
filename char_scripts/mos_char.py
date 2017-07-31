@@ -7,6 +7,7 @@ from typing import List, Any, Tuple, Dict, Optional
 import yaml
 import numpy as np
 import scipy.constants
+import scipy.interpolate
 
 from bag.io import read_yaml, open_file
 from bag.core import BagProject, Testbench
@@ -192,7 +193,9 @@ class MOSCharSim(SimulationManager):
         for val_list in self.get_combinations_iter():
             dsn_name = self.get_instance_name(dsn_name_base, val_list)
             results = self.get_sim_results(tb_type, val_list)
-            ibias = -results['ibias']
+            ibias = results['ibias']
+            if not self.is_nmos(val_list):
+                ibias *= -1
             ss_dict = mos_y_to_ss(results, char_freq, fg, ibias)
 
             if corner_list is None:
@@ -268,19 +271,16 @@ class MOSCharSim(SimulationManager):
 
         return corner_list, tot_dict
 
-    def vgn_vs_ibias(self,
-                     fstart,  # type: Optional[float]
-                     fstop,  # type: Optional[float]
-                     vgd,  # type: float
-                     itarg,  # type: float
-                     scale=1.0,  # type: float
-                     temp=300,  # type: float
-                     ):
-        import matplotlib.pyplot as plt
-
-        dsn_name = 'MOS_PCH_STACK_intent_svt_l_90n'
-        print(dsn_name)
-
+    def get_dsn_noise_info(self,
+                           dsn_name,  # type: str
+                           fstart,  # type: Optional[float]
+                           fstop,  # type: Optional[float]
+                           vgd,  # type: float
+                           itarg,  # type: float
+                           scale=1.0,  # type: float
+                           temp=300,  # type: float
+                           ):
+        # type: (...) -> Dict[str, Any]
         corner_list, tot_dict = self.get_ss_with_noise(fstart, fstop, scale=scale, temp=temp)
         ss_dict = tot_dict[dsn_name]
 
@@ -293,39 +293,97 @@ class MOSCharSim(SimulationManager):
         xmat[:, 2] = vgs
         xmat[:, 1] = vgs - vgd
 
-        plt.figure(1)
-
-        ax1 = plt.subplot(3, 1, 1)
-        ax1.ticklabel_format(style='sci', axis='both', scilimits=(-2, 2), useMathText=True)
-        plt.title('vgn vs ibias')
-        plt.ylabel('vgn (V)')
-
-        ax2 = plt.subplot(3, 1, 2, sharex=ax1)
-        ax2.ticklabel_format(style='sci', axis='both', scilimits=(-2, 2), useMathText=True)
-        plt.title('gamma_eff vs ibias')
-        plt.ylabel('gamma_eff')
-        plt.xlabel('ibias_unit (A)')
-
-        ax3 = plt.subplot(3, 1, 3, sharex=ax1)
-        ax3.ticklabel_format(style='sci', axis='both', scilimits=(-2, 2), useMathText=True)
-        plt.title('vgs vs ibias')
-        plt.ylabel('vgs (V)')
-        plt.xlabel('ibias_unit (A)')
-
         k = scale * (fstop - fstart) * 4 * scipy.constants.Boltzmann * temp
+        info_dict = {'ibias_unit': [], 'gm': [], 'gamma': [], 'vgn': [], 'corners': corner_list}
         for idx, corner in enumerate(corner_list):
             xmat[:, 0] = idx
             ibias_cur = ibias(xmat)
             gm_cur = gm(xmat) * itarg / ibias_cur
             gamma_cur = gamma(xmat)
             vgn = np.sqrt(k * gamma_cur / gm_cur)
-            ax1.plot(ibias_cur, vgn, 'o-', label=corner)
-            ax2.plot(ibias_cur, gamma_cur, 'o-', label=corner)
-            ax3.plot(ibias_cur, vgs, 'o-', label=corner)
 
-        ax1.legend()
-        ax2.legend()
-        ax3.legend()
+            info_dict['ibias_unit'].append(ibias_cur)
+            info_dict['gm'].append(gm_cur)
+            info_dict['gamma'].append(gamma_cur)
+            info_dict['vgn'].append(vgn)
+
+        return info_dict
+
+    def plot_dsn_info(self,
+                      dsn_name,  # type: str
+                      fstart,  # type: Optional[float]
+                      fstop,  # type: Optional[float]
+                      vgd,  # type: float
+                      itarg,  # type: float
+                      scale=1.0,  # type: float
+                      temp=300,  # type: float
+                      ):
+        # type: (...) -> None
+        import matplotlib.pyplot as plt
+
+        plt_names = ['vgn', 'gamma', 'gm']
+        plt_unit_str = ['nV', '', 'uS']
+        plt_unit = [1e-9, 1, 1e-6]
+        xname = 'ibias_unit'
+        xunit = 1e-6
+        xlabel = 'ibias_unit (uA)'
+
+        print(dsn_name)
+
+        info_dict = self.get_dsn_noise_info(dsn_name, fstart, fstop, vgd, itarg, scale=scale, temp=temp)
+        corners = info_dict['corners']
+        xvec_list = info_dict[xname]
+
+        # figure out X limit
+        xmin = xmax = None
+        for xvec in xvec_list:
+            min_cur = np.min(xvec)
+            max_cur = np.max(xvec)
+            if xmin is None:
+                xmin, xmax = min_cur, max_cur
+            else:
+                xmin = max(xmin, min_cur)
+                xmax = min(xmax, max_cur)
+
+        xfine = np.linspace(xmin, xmax, 100)
+
+        plt.figure(1)
+        nplt = len(plt_names)
+        ax0 = ax_cur = None
+        for idx, (name, unit_str, unit) in enumerate(zip(plt_names, plt_unit_str, plt_unit)):
+            if ax0 is None:
+                ax0 = ax_cur = plt.subplot(nplt, 1, idx + 1)
+            else:
+                ax_cur = plt.subplot(nplt, 1, idx + 1, sharex=ax0)
+            ax_cur.ticklabel_format(style='sci', axis='both', scilimits=(-2, 2), useMathText=True)
+            ax_cur.set_title('%s vs %s' % (name, xname))
+            if unit_str:
+                ax_cur.set_ylabel('%s (%s)' % (name, unit_str))
+            else:
+                ax_cur.set_ylabel(name)
+
+            yvec_list = info_dict[name]
+            ymin = ymax = None
+            for xvec, yvec in zip(xvec_list, yvec_list):
+                yfine = scipy.interpolate.interp1d(xvec, yvec)(xfine)
+                ymin_cur = np.min(yfine)
+                ymax_cur = np.max(yfine)
+                if ymin is None:
+                    ymin, ymax = ymin_cur, ymax_cur
+                else:
+                    ymin = min(ymin, ymin_cur)
+                    ymax = max(ymax, ymax_cur)
+
+            for xvec, yvec, corner in zip(xvec_list, yvec_list, corners):
+                ax_cur.plot(xvec / xunit, yvec / unit, 'o-', label=corner)
+
+            ax_cur.set_xlim([xmin / xunit, xmax / xunit])
+            ax_cur.set_ylim([ymin / unit, ymax / unit])
+            ax_cur.legend()
+
+        if ax_cur is not None:
+            ax_cur.set_xlabel(xlabel)
+
         plt.show()
 
 
@@ -344,13 +402,14 @@ if __name__ == '__main__':
 
     sim = MOSCharSim(bprj, config_file)
 
-    sim.run_lvs_rcx(tb_type='tb_ibias')
+    # sim.run_lvs_rcx(tb_type='tb_ibias')
     # sim.run_simulations('tb_ibias')
-    sim.process_ibias_data()
+    # sim.process_ibias_data()
 
-    sim.run_simulations('tb_sp')
-    sim.run_simulations('tb_noise')
+    # sim.run_simulations('tb_sp')
+    # sim.run_simulations('tb_noise')
 
-    # fc = 100e3
-    # fbw = 500
-    # sim.vgn_vs_ibias(fc - fbw / 2, fc + fbw / 2, 0.0, 1e-6)
+    fc = 100e3
+    fbw = 500
+    dname = 'MOS_NCH_STACK_intent_svt_l_90n'
+    sim.plot_dsn_info(dname, fc - fbw / 2, fc + fbw / 2, 0.0, 1e-6)
