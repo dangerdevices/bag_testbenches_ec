@@ -187,7 +187,7 @@ class MOSCharSim(SimulationManager):
 
         axis_names = ['corner', 'vds', 'vgs']
         delta_list = [0.1, 1e-6, 1e-6]
-        corner_list = points = None
+        corner_list = None
         total_dict = {}
         for val_list in self.get_combinations_iter():
             dsn_name = self.get_instance_name(dsn_name_base, val_list)
@@ -197,7 +197,8 @@ class MOSCharSim(SimulationManager):
 
             if corner_list is None:
                 corner_list = results['corner'].tolist()
-                points = np.arange(len(corner_list)), results['vds'], results['vgs']
+
+            points = np.arange(len(corner_list)), results['vds'], results['vgs']
 
             # rearrange array axis
             sweep_params = results['sweep_params']
@@ -223,7 +224,7 @@ class MOSCharSim(SimulationManager):
 
         axis_names = ['corner', 'vds', 'vgs', 'freq']
         delta_list = [0.1, 1e-6, 1e-6, 0.1]
-        corner_list = log_freq = points = None
+        corner_list = log_freq = None
         output_dict = {}
         for val_list in self.get_combinations_iter():
             dsn_name = self.get_instance_name(dsn_name_base, val_list)
@@ -233,7 +234,8 @@ class MOSCharSim(SimulationManager):
             if corner_list is None:
                 corner_list = results['corner'].tolist()
                 log_freq = np.log(results['freq'])
-                points = np.arange(len(corner_list)), results['vds'], results['vgs'], log_freq
+
+            points = np.arange(len(corner_list)), results['vds'], results['vgs'], log_freq
 
             fstart_log = log_freq[0] if fstart is None else np.log(fstart)
             fstop_log = log_freq[-1] if fstop is None else np.log(fstop)
@@ -329,7 +331,7 @@ class MOSCharSim(SimulationManager):
 
 if __name__ == '__main__':
 
-    config_file = 'mos_char_specs/mos_char_pch_stack.yaml'
+    config_file = 'mos_char_specs/mos_char_nch_stack.yaml'
 
     local_dict = locals()
     if 'bprj' not in local_dict:
@@ -342,12 +344,13 @@ if __name__ == '__main__':
 
     sim = MOSCharSim(bprj, config_file)
 
+    sim.run_lvs_rcx(tb_type='tb_ibias')
     # sim.run_simulations('tb_ibias')
-    # sim.process_ibias_data()
+    sim.process_ibias_data()
 
-    # sim.run_simulations('tb_sp')
-    # sim.run_simulations('tb_noise')
+    sim.run_simulations('tb_sp')
+    sim.run_simulations('tb_noise')
 
-    fc = 100e3
-    fbw = 500
-    sim.vgn_vs_ibias(fc - fbw / 2, fc + fbw / 2, 0.0, 1e-6)
+    # fc = 100e3
+    # fbw = 500
+    # sim.vgn_vs_ibias(fc - fbw / 2, fc + fbw / 2, 0.0, 1e-6)
