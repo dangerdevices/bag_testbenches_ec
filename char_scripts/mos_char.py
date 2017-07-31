@@ -102,11 +102,11 @@ class MOSCharSim(SimulationManager):
                 if is_nmos:
                     vds_vals = np.linspace(vds_min, vds_max, vds_num + 1)
                     tb.set_sweep_parameter('vds', values=vds_vals)
-                    tb.set_sweep_parameter('vb_dc', 0)
+                    tb.set_parameter('vb_dc', 0)
                 else:
                     vds_vals = np.linspace(-vds_max, -vds_min, vds_num + 1)
                     tb.set_sweep_parameter('vds', values=vds_vals)
-                    tb.set_sweep_parameter('vb_dc', abs(vgs_start))
+                    tb.set_parameter('vb_dc', abs(vgs_start))
             elif tb_type == 'tb_noise':
                 tb.set_parameter('freq_start', tb_params['freq_start'])
                 tb.set_parameter('freq_stop', tb_params['freq_stop'])
@@ -123,12 +123,12 @@ class MOSCharSim(SimulationManager):
                     vds_vals = np.linspace(vds_min, vds_max, vds_num + 1)
                     tb.set_sweep_parameter('vds', values=vds_vals)
                     tb.set_sweep_parameter('vgs', values=vgs_vals)
-                    tb.set_sweep_parameter('vb_dc', 0)
+                    tb.set_parameter('vb_dc', 0)
                 else:
                     vds_vals = np.linspace(-vds_max, -vds_min, vds_num + 1)
                     tb.set_sweep_parameter('vds', values=vds_vals)
                     tb.set_sweep_parameter('vgs', values=vgs_vals)
-                    tb.set_sweep_parameter('vb_dc', abs(vgs_start))
+                    tb.set_parameter('vb_dc', abs(vgs_start))
             else:
                 raise ValueError('Unknown testbench type: %s' % tb_type)
 
@@ -319,7 +319,7 @@ class MOSCharSim(SimulationManager):
 
 if __name__ == '__main__':
 
-    config_file = 'mos_char_specs/mos_char_nch.yaml'
+    config_file = 'mos_char_specs/mos_char_pch_stack.yaml'
 
     local_dict = locals()
     if 'bprj' not in local_dict:
@@ -331,5 +331,11 @@ if __name__ == '__main__':
         bprj = local_dict['bprj']
 
     sim = MOSCharSim(bprj, config_file)
+
+    # sim.run_simulations('tb_ibias')
     # sim.process_ibias_data()
-    sim.vgn_vs_ibias(99e3, 101e3, 0.0, 1e-6)
+
+    sim.run_simulations('tb_sp')
+    sim.run_simulations('tb_noise')
+
+    # sim.vgn_vs_ibias(99e3, 101e3, 0.0, 1e-6)
