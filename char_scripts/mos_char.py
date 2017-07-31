@@ -18,6 +18,7 @@ from bag.math.interpolate import LinearInterpolator
 
 class MOSCharSim(SimulationManager):
     """A class that handles transistor characterization."""
+
     def __init__(self, prj, spec_file):
         super(MOSCharSim, self).__init__(prj, spec_file)
 
@@ -173,10 +174,11 @@ class MOSCharSim(SimulationManager):
                 yaml.dump(ans, f)
 
     def get_ss_params(self):
-        # type: () -> Tuple[np.multiarray.ndarray, List[Dict[str, LinearInterpolator]]]
+        # type: () -> Tuple[List[str], Dict[str, Dict[str, LinearInterpolator]]]
         tb_type = 'tb_sp'
         tb_specs = self.specs[tb_type]
         sch_params = self.specs['sch_params']
+        dsn_name_base = self.specs['dsn_name_base']
 
         fg = sch_params['nf']
         char_freq = tb_specs['tb_params']['sp_freq']
@@ -184,14 +186,15 @@ class MOSCharSim(SimulationManager):
         axis_names = ['corner', 'vds', 'vgs']
         delta_list = [0.1, 1e-6, 1e-6]
         corner_list = points = None
-        ss_list = []
+        total_dict = {}
         for val_list in self.get_combinations_iter():
+            dsn_name = self.get_instance_name(dsn_name_base, val_list)
             results = self.get_sim_results(tb_type, val_list)
             ibias = results['ibias']
             ss_dict = mos_y_to_ss(results, char_freq, fg, ibias)
 
             if corner_list is None:
-                corner_list = results['corner']
+                corner_list = results['corner'].tolist()
                 points = np.arange(len(corner_list)), results['vds'], results['vgs']
 
             # rearrange array axis
@@ -204,27 +207,29 @@ class MOSCharSim(SimulationManager):
                 new_data = np.transpose(ss_dict[key], axes=order)
                 ss_dict[key] = LinearInterpolator(points, new_data, delta_list, extrapolate=True)
 
-            ss_list.append(ss_dict)
+            total_dict[dsn_name] = ss_dict
 
-        return corner_list, ss_list
+        return corner_list, total_dict
 
     def get_integrated_noise(self, fstart, fstop, scale=1.0):
-        # type: (Optional[float], Optional[float], float) -> Tuple[np.multiarray.ndarray, List[LinearInterpolator]]
+        # type: (Optional[float], Optional[float], float) -> Tuple[List[str], Dict[str, LinearInterpolator]]
         tb_type = 'tb_noise'
         sch_params = self.specs['sch_params']
+        dsn_name_base = self.specs['dsn_name_base']
 
         fg = sch_params['nf']
 
         axis_names = ['corner', 'vds', 'vgs', 'freq']
         delta_list = [0.1, 1e-6, 1e-6, 0.1]
         corner_list = log_freq = points = None
-        output_list = []
+        output_dict = {}
         for val_list in self.get_combinations_iter():
+            dsn_name = self.get_instance_name(dsn_name_base, val_list)
             results = self.get_sim_results(tb_type, val_list)
-            out = np.log(scale / fg * results['idn']**2)
+            out = np.log(scale / fg * results['idn'] ** 2)
 
             if corner_list is None:
-                corner_list = results['corner']
+                corner_list = results['corner'].tolist()
                 log_freq = np.log(results['freq'])
                 points = np.arange(len(corner_list)), results['vds'], results['vgs'], log_freq
 
@@ -237,9 +242,9 @@ class MOSCharSim(SimulationManager):
             order = [swp_vars.index(name) for name in axis_names]
             noise_fun = LinearInterpolator(points, np.transpose(out, axes=order), delta_list, extrapolate=True)
             integ_noise = noise_fun.integrate(fstart_log, fstop_log, axis=-1, logx=True, logy=True)
-            output_list.append(integ_noise)
+            output_dict[dsn_name] = integ_noise
 
-        return corner_list, output_list
+        return corner_list, output_dict
 
     def get_ss_with_noise(self,
                           fstart,  # type: Optional[float]
@@ -247,16 +252,67 @@ class MOSCharSim(SimulationManager):
                           scale=1.0,  # type: float
                           temp=300,  # type: float
                           ):
-        # type: (...) -> Tuple[np.multiarray.ndarray, List[Dict[str, LinearInterpolator]]]
-        corner_list, dict_list = self.get_ss_params()
-        _, noise_var_list = self.get_integrated_noise(fstart, fstop, scale=scale)
+        # type: (...) -> Tuple[List[str], Dict[str, Dict[str, LinearInterpolator]]]
+        corner_list, tot_dict = self.get_ss_params()
+        _, noise_dict = self.get_integrated_noise(fstart, fstop, scale=scale)
 
         k = scale * (fstop - fstart) * 4 * scipy.constants.Boltzmann * temp
-        for cur_dict, noise_var in zip(dict_list, noise_var_list):
-            gm = cur_dict['gm']
-            cur_dict['gamma_eff'] = noise_var / gm / k
+        for key, val in tot_dict.items():
+            gm = val['gm']
+            noise_var = noise_dict[key]
+            val['gamma_eff'] = noise_var / gm / k
 
-        return corner_list, dict_list
+        return corner_list, tot_dict
+
+    def vgn_vs_ibias(self,
+                     fstart,  # type: Optional[float]
+                     fstop,  # type: Optional[float]
+                     vgd,  # type: float
+                     itarg,  # type: float
+                     scale=1.0,  # type: float
+                     temp=300,  # type: float
+                     ):
+        import matplotlib.pyplot as plt
+
+        dsn_name = 'MOS_NCH_intent_svt_l_90n'
+
+        corner_list, tot_dict = self.get_ss_with_noise(fstart, fstop, scale=scale, temp=temp)
+        ss_dict = tot_dict[dsn_name]
+
+        ibias = ss_dict['ibias']
+        gamma = ss_dict['gamma_eff']
+        gm = ss_dict['gm']
+
+        vgs = ibias.get_input_points(2)
+        xmat = np.empty((vgs.size, 3))
+        xmat[:, 2] = vgs
+        xmat[:, 1] = vgs - vgd
+
+        plt.figure(1)
+
+        ax1 = plt.subplot(2, 1, 1)
+        ax1.ticklabel_format(style='sci', axis='both', scilimits=(-2, 2), useMathText=True)
+        plt.title('vgn vs ibias')
+        plt.ylabel('vgn (V/Hz)')
+
+        ax2 = plt.subplot(2, 1, 2, sharex=ax1)
+        ax2.ticklabel_format(style='sci', axis='both', scilimits=(-2, 2), useMathText=True)
+        plt.title('gamma_eff vs ibias')
+        plt.ylabel('gamma_eff')
+        plt.xlabel('ibias_unit (A)')
+
+        for idx, corner in enumerate(corner_list):
+            xmat[:, 0] = idx
+            ibias_cur = ibias(xmat)
+            gm_cur = gm(xmat) * itarg / ibias_cur
+            gamma_cur = gamma(xmat)
+            vgn = 4 * scipy.constants.Boltzmann * temp * gamma_cur / gm_cur
+            ax1.plot(ibias_cur, np.sqrt(vgn), 'o-', label=corner)
+            ax2.plot(ibias_cur, gamma_cur, 'o-', label=corner)
+
+        ax1.legend()
+        ax2.legend()
+        plt.show()
 
 
 if __name__ == '__main__':
@@ -274,3 +330,4 @@ if __name__ == '__main__':
 
     sim = MOSCharSim(bprj, config_file)
     # sim.process_ibias_data()
+    sim.vgn_vs_ibias(99e3, 101e3, 0.0, 1e-6)
