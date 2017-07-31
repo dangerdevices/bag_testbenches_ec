@@ -271,41 +271,80 @@ class MOSCharSim(SimulationManager):
 
         return corner_list, tot_dict
 
-    def get_dsn_noise_info(self,
-                           dsn_name,  # type: str
-                           fstart,  # type: Optional[float]
-                           fstop,  # type: Optional[float]
-                           vgd,  # type: float
-                           itarg,  # type: float
-                           scale=1.0,  # type: float
-                           temp=300,  # type: float
-                           ):
+    def get_dsn_performance(self,
+                            dsn_name,  # type: str
+                            fstart,  # type: Optional[float]
+                            fstop,  # type: Optional[float]
+                            vgd,  # type: float
+                            itarg=1e-6,  # type: float
+                            scale=1.0,  # type: float
+                            temp=300,  # type: float
+                            num_points=100,  # type: int
+                            ):
         # type: (...) -> Dict[str, Any]
         corner_list, tot_dict = self.get_ss_with_noise(fstart, fstop, scale=scale, temp=temp)
         ss_dict = tot_dict[dsn_name]
+        num_corners = len(corner_list)
 
+        new_x_name = 'ibias_unit'
         ibias = ss_dict['ibias']
-        gamma = ss_dict['gamma_eff']
-        gm = ss_dict['gm']
 
+        fun_dict = dict(
+            ibias_unit=ibias,
+            gm=ss_dict['gm'],
+            gds=ss_dict['gds'],
+            cdd=ss_dict['cds'] + ss_dict['cdb'] + ss_dict['cgd'],
+            gamma=ss_dict['gamma_eff'],
+        )
+
+        # get input matrix
         vgs = ibias.get_input_points(2)
-        xmat = np.empty((vgs.size, 3))
-        xmat[:, 2] = vgs
-        xmat[:, 1] = vgs - vgd
+        vgs = np.linspace(vgs[0], vgs[-1], num_points)  # type: np.multiarray.ndarray
 
+        cvec = np.arange(num_corners)
+        cmat, vgsmat = np.meshgrid(cvec, vgs, indexing='ij')
+        fun_arg = np.stack((cmat, vgsmat - vgd, vgsmat), axis=-1)
+
+        # get arrays from LinearInterpolators
+        core_dict = {key: fun(fun_arg) for key, fun in fun_dict.items()}
+        # compute X bounds
+        xmat = core_dict[new_x_name]
+        xmin = np.max(np.min(xmat, axis=1))
+        xmax = np.min(np.max(xmat, axis=1))
+
+        # change independent variable to ibias
         k = scale * (fstop - fstart) * 4 * scipy.constants.Boltzmann * temp
-        info_dict = {'ibias_unit': [], 'gm': [], 'gamma': [], 'vgn': [], 'corners': corner_list}
-        for idx, corner in enumerate(corner_list):
-            xmat[:, 0] = idx
-            ibias_cur = ibias(xmat)
-            gm_cur = gm(xmat) * itarg / ibias_cur
-            gamma_cur = gamma(xmat)
-            vgn = np.sqrt(k * gamma_cur / gm_cur)
+        new_x = np.linspace(xmin, xmax, num_points)  # type: np.multiarray.ndarray
+        info_dict = {}
+        for key, arr in core_dict.items():
+            ibias_cur = core_dict['ibias_unit']
+            new_ymat = np.empty(ibias_cur.shape)
+            if key != new_x_name:
+                for idx in range(num_corners):
+                    xvec = ibias_cur[idx, :]
+                    yvec = arr[idx, :]
+                    new_ymat[idx, :] = scipy.interpolate.interp1d(xvec, yvec)(new_x)
+                info_dict[key] = new_ymat
+            else:
+                # add vgs
+                for idx in range(num_corners):
+                    xvec = ibias_cur[idx, :]
+                    new_ymat[idx, :] = scipy.interpolate.interp1d(xvec, vgs)(new_x)
+                info_dict['vgs'] = new_ymat
 
-            info_dict['ibias_unit'].append(ibias_cur)
-            info_dict['gm'].append(gm_cur)
-            info_dict['gamma'].append(gamma_cur)
-            info_dict['vgn'].append(vgn)
+        info_dict[new_x_name] = new_x
+        info_dict['corners'] = corner_list
+
+        iscale = itarg / new_x
+        info_dict['gm'] = gm = info_dict['gm'] * iscale
+        info_dict['gds'] = gds = info_dict['gds'] * iscale
+        info_dict['cdd'] = cdd = info_dict['cdd'] * iscale
+        gamma = info_dict['gamma']
+
+        info_dict['vgn'] = np.sqrt(k * gamma / gm)
+        info_dict['ro'] = 1 / gds
+        info_dict['gain'] = gm / gds
+        info_dict['cdd'] = cdd
 
         return info_dict
 
@@ -314,38 +353,25 @@ class MOSCharSim(SimulationManager):
                       fstart,  # type: Optional[float]
                       fstop,  # type: Optional[float]
                       vgd,  # type: float
-                      itarg,  # type: float
+                      itarg=1e-6,  # type: float
                       scale=1.0,  # type: float
                       temp=300,  # type: float
                       ):
         # type: (...) -> None
         import matplotlib.pyplot as plt
 
-        plt_names = ['vgn', 'gamma', 'gm']
-        plt_unit_str = ['nV', '', 'uS']
-        plt_unit = [1e-9, 1, 1e-6]
+        plt_names = ['vgn', 'gamma', 'gain', 'cdd']
+        plt_unit_str = ['nV', '', '', 'fF']
+        plt_unit = [1e-9, 1, 1, 1e-15]
         xname = 'ibias_unit'
         xunit = 1e-6
         xlabel = 'ibias_unit (uA)'
 
         print(dsn_name)
 
-        info_dict = self.get_dsn_noise_info(dsn_name, fstart, fstop, vgd, itarg, scale=scale, temp=temp)
+        info_dict = self.get_dsn_performance(dsn_name, fstart, fstop, vgd, itarg=itarg, scale=scale, temp=temp)
+        xvec = info_dict[xname]
         corners = info_dict['corners']
-        xvec_list = info_dict[xname]
-
-        # figure out X limit
-        xmin = xmax = None
-        for xvec in xvec_list:
-            min_cur = np.min(xvec)
-            max_cur = np.max(xvec)
-            if xmin is None:
-                xmin, xmax = min_cur, max_cur
-            else:
-                xmin = max(xmin, min_cur)
-                xmax = min(xmax, max_cur)
-
-        xfine = np.linspace(xmin, xmax, 100)
 
         plt.figure(1)
         nplt = len(plt_names)
@@ -355,30 +381,18 @@ class MOSCharSim(SimulationManager):
                 ax0 = ax_cur = plt.subplot(nplt, 1, idx + 1)
             else:
                 ax_cur = plt.subplot(nplt, 1, idx + 1, sharex=ax0)
-            ax_cur.ticklabel_format(style='sci', axis='both', scilimits=(-2, 2), useMathText=True)
-            ax_cur.set_title('%s vs %s' % (name, xname))
+
+            ax_cur.ticklabel_format(style='sci', axis='both', scilimits=(-4, 4), useMathText=True)
+
             if unit_str:
                 ax_cur.set_ylabel('%s (%s)' % (name, unit_str))
             else:
                 ax_cur.set_ylabel(name)
 
-            yvec_list = info_dict[name]
-            ymin = ymax = None
-            for xvec, yvec in zip(xvec_list, yvec_list):
-                yfine = scipy.interpolate.interp1d(xvec, yvec)(xfine)
-                ymin_cur = np.min(yfine)
-                ymax_cur = np.max(yfine)
-                if ymin is None:
-                    ymin, ymax = ymin_cur, ymax_cur
-                else:
-                    ymin = min(ymin, ymin_cur)
-                    ymax = max(ymax, ymax_cur)
+            ymat = info_dict[name]
+            for cidx, corner in enumerate(corners):
+                ax_cur.plot(xvec / xunit, ymat[cidx, :] / unit, label=corner)
 
-            for xvec, yvec, corner in zip(xvec_list, yvec_list, corners):
-                ax_cur.plot(xvec / xunit, yvec / unit, 'o-', label=corner)
-
-            ax_cur.set_xlim([xmin / xunit, xmax / xunit])
-            ax_cur.set_ylim([ymin / unit, ymax / unit])
             ax_cur.legend()
 
         if ax_cur is not None:
@@ -389,7 +403,7 @@ class MOSCharSim(SimulationManager):
 
 if __name__ == '__main__':
 
-    config_file = 'mos_char_specs/mos_char_nch_stack.yaml'
+    config_file = 'mos_char_specs/mos_char_pch_stack.yaml'
 
     local_dict = locals()
     if 'bprj' not in local_dict:
@@ -411,5 +425,8 @@ if __name__ == '__main__':
 
     fc = 100e3
     fbw = 500
-    dname = 'MOS_NCH_STACK_intent_svt_l_90n'
-    sim.plot_dsn_info(dname, fc - fbw / 2, fc + fbw / 2, 0.0, 1e-6)
+    vgd_opt = 0.0
+    temperature = 310
+    inorm = 1e-6
+    dname = 'MOS_PCH_STACK_intent_svt_l_90n'
+    sim.plot_dsn_info(dname, fc - fbw / 2, fc + fbw / 2, vgd_opt, itarg=inorm, temp=temperature)
