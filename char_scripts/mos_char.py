@@ -192,7 +192,7 @@ class MOSCharSim(SimulationManager):
         for val_list in self.get_combinations_iter():
             dsn_name = self.get_instance_name(dsn_name_base, val_list)
             results = self.get_sim_results(tb_type, val_list)
-            ibias = results['ibias']
+            ibias = -results['ibias']
             ss_dict = mos_y_to_ss(results, char_freq, fg, ibias)
 
             if corner_list is None:
@@ -276,7 +276,8 @@ class MOSCharSim(SimulationManager):
                      ):
         import matplotlib.pyplot as plt
 
-        dsn_name = 'MOS_NCH_intent_svt_l_90n'
+        dsn_name = 'MOS_PCH_STACK_intent_svt_l_90n'
+        print(dsn_name)
 
         corner_list, tot_dict = self.get_ss_with_noise(fstart, fstop, scale=scale, temp=temp)
         ss_dict = tot_dict[dsn_name]
@@ -292,28 +293,37 @@ class MOSCharSim(SimulationManager):
 
         plt.figure(1)
 
-        ax1 = plt.subplot(2, 1, 1)
+        ax1 = plt.subplot(3, 1, 1)
         ax1.ticklabel_format(style='sci', axis='both', scilimits=(-2, 2), useMathText=True)
         plt.title('vgn vs ibias')
-        plt.ylabel('vgn (V/Hz)')
+        plt.ylabel('vgn (V)')
 
-        ax2 = plt.subplot(2, 1, 2, sharex=ax1)
+        ax2 = plt.subplot(3, 1, 2, sharex=ax1)
         ax2.ticklabel_format(style='sci', axis='both', scilimits=(-2, 2), useMathText=True)
         plt.title('gamma_eff vs ibias')
         plt.ylabel('gamma_eff')
         plt.xlabel('ibias_unit (A)')
 
+        ax3 = plt.subplot(3, 1, 3, sharex=ax1)
+        ax3.ticklabel_format(style='sci', axis='both', scilimits=(-2, 2), useMathText=True)
+        plt.title('vgs vs ibias')
+        plt.ylabel('vgs (V)')
+        plt.xlabel('ibias_unit (A)')
+
+        k = scale * (fstop - fstart) * 4 * scipy.constants.Boltzmann * temp
         for idx, corner in enumerate(corner_list):
             xmat[:, 0] = idx
             ibias_cur = ibias(xmat)
             gm_cur = gm(xmat) * itarg / ibias_cur
             gamma_cur = gamma(xmat)
-            vgn = 4 * scipy.constants.Boltzmann * temp * gamma_cur / gm_cur
-            ax1.plot(ibias_cur, np.sqrt(vgn), 'o-', label=corner)
+            vgn = np.sqrt(k * gamma_cur / gm_cur)
+            ax1.plot(ibias_cur, vgn, 'o-', label=corner)
             ax2.plot(ibias_cur, gamma_cur, 'o-', label=corner)
+            ax3.plot(ibias_cur, vgs, 'o-', label=corner)
 
         ax1.legend()
         ax2.legend()
+        ax3.legend()
         plt.show()
 
 
@@ -335,7 +345,9 @@ if __name__ == '__main__':
     # sim.run_simulations('tb_ibias')
     # sim.process_ibias_data()
 
-    sim.run_simulations('tb_sp')
-    sim.run_simulations('tb_noise')
+    # sim.run_simulations('tb_sp')
+    # sim.run_simulations('tb_noise')
 
-    # sim.vgn_vs_ibias(99e3, 101e3, 0.0, 1e-6)
+    fc = 100e3
+    fbw = 500
+    sim.vgn_vs_ibias(fc - fbw / 2, fc + fbw / 2, 0.0, 1e-6)
