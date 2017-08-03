@@ -242,7 +242,7 @@ class MOSCharSS(SimulationManager):
         char_freq = tb_specs['tb_params']['sp_freq']
 
         axis_names = ['corner', 'vds', 'vgs']
-        delta_list = [0.1, 1e-6, 1e-6]
+        delta_list = [1e-6, 1e-6]
         corner_list = None
         total_dict = {}
         for val_list in self.get_combinations_iter():
@@ -300,7 +300,7 @@ class MOSCharSS(SimulationManager):
         fg = sch_params['nf']
 
         axis_names = ['corner', 'vds', 'vgs', 'freq']
-        delta_list = [0.1, 1e-6, 1e-6, 0.1]
+        delta_list = [1e-6, 1e-6, 1e-3]
         corner_list = log_freq = None
         output_dict = {}
         for val_list in self.get_combinations_iter():

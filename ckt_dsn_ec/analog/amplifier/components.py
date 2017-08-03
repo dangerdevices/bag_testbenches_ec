@@ -37,7 +37,7 @@ class LoadDiodePFB(object):
         self._intent_list = mos_db.get_dsn_param_values('intent')
         self._best_op = None
 
-    def design(self, itarg_list, cg_max, l, valid_width_list):
+    def design(self, itarg_list, vstar_min, l, valid_width_list):
         # type: (List[float], float, float, List[Union[float, int]], float) -> None
         """Design the diode load.
 
@@ -45,8 +45,8 @@ class LoadDiodePFB(object):
         ----------
         itarg_list : List[float]
             target single-ended bias current across simulation environments.
-        cg_max : float
-            maximum single-ended gate capacitance.
+        vstar_min : float
+            minimum V* of the diode.
         l : float
             channel length.
         valid_width_list : List[Union[float, int]]
@@ -76,7 +76,6 @@ class LoadDiodePFB(object):
                 gm1 = self._db.get_function_list('gm')
                 cgg1 = self._db.get_function_list('cgg')
                 vgs1_min, vgs1_max = ib1[0].get_input_range(vgs_idx)
-                seg1_min = 2 if stack1 == 1 else 1
 
                 for idx2 in range(idx1 + 1, num_stack):
                     stack2 = self._stack_list[idx2]
@@ -91,14 +90,17 @@ class LoadDiodePFB(object):
 
                     for w in valid_width_list:
                         scale = w / wnom
-                        seg1_iter = BinaryIterator(seg1_min, None, step=1)
+                        seg1_iter = BinaryIterator(2, None, step=2)
                         while seg1_iter.has_next():
                             seg1 = seg1_iter.get_next()
+                            scale1 = scale * seg1
+
                             seg2_iter = BinaryIterator(seg1, None, step=2)
                             while seg2_iter.has_next():
                                 seg2 = seg2_iter.get_next()
+                                scale2 = scale * seg2
 
-                                vgs_list, err_code = self._solve_vgs(itarg_list, scale, seg1, seg2, ib1, ib2,
+                                vgs_list, err_code = self._solve_vgs(itarg_list, scale1, scale2, ib1, ib2,
                                                                      vgs_min, vgs_max)
                                 if err_code < 0:
                                     # too few fingers
@@ -109,18 +111,21 @@ class LoadDiodePFB(object):
                                 else:
                                     good = True
                                     fun_args = [self._db.get_fun_arg(vbs=0, vds=vgs, vgs=vgs) for vgs in vgs_list]
-                                    ro_list, cg_list = [], []
-                                    for fgm1, fgm2, fcg1, fcg2, arg in zip(gm1, gm2, cgg1, cgg2, fun_args):
-                                        cur_gm1 = scale * fgm1(arg)
-                                        cur_gm2 = scale * fgm2(arg)
-                                        cur_cg = scale * (fcg1(arg) + fcg2(arg))
-                                        if cur_gm2 >= cur_gm1 or cur_cg > cg_max:
+                                    ro_list, cg_list, vstar_list = [], [], []
+                                    for fib1, fgm1, fgm2, fcg1, fcg2, arg in zip(ib1, gm1, gm2, cgg1, cgg2, fun_args):
+                                        cur_gm1 = scale1 * fgm1(arg)
+                                        cur_gm2 = scale2 * fgm2(arg)
+                                        cur_cg = scale1 * fcg1(arg) + scale2 * fcg2(arg)
+                                        cur_ib1 = scale1 * fib1(arg)
+                                        cur_vstar = 2 * cur_ib1 / cur_gm1
+                                        if cur_gm2 >= cur_gm1 or cur_vstar < vstar_min:
                                             # negative resistance or exceed max cap spec
                                             good = False
                                             break
                                         else:
                                             ro_list.append(1 / (cur_gm1 - cur_gm2))
                                             cg_list.append(cur_cg)
+                                            vstar_list.append(cur_vstar)
 
                                     if good:
                                         seg2_iter.save()
@@ -129,7 +134,7 @@ class LoadDiodePFB(object):
                                         if best_ro is None or cur_score > best_ro:
                                             best_ro = cur_score
                                             best_op = (intent, stack1, stack2, w, seg1, seg2,
-                                                       vgs_list, ro_list, cg_list)
+                                                       vgs_list, ro_list, cg_list, vstar_list)
                                     else:
                                         seg2_iter.down()
 
@@ -144,9 +149,8 @@ class LoadDiodePFB(object):
 
     def _solve_vgs(self,
                    itarg_list,  # type: List[float]
-                   scale,  # type: float
-                   seg1,  # type: int
-                   seg2,  # type: int
+                   k1,  # type: float
+                   k2,  # type: float
                    ib1,  # type: List[DiffFunction]
                    ib2,  # type: List[DiffFunction]
                    vgs_min,  # type: float
@@ -154,7 +158,6 @@ class LoadDiodePFB(object):
                    ):
         # type: (...) -> Tuple[List[float], int]
 
-        k1, k2 = scale * seg1, scale * seg2
         vgs_list = []
         for itarg, ifun1, ifun2 in zip(itarg_list, ib1, ib2):
             def zero_fun(vgs):
@@ -179,11 +182,11 @@ class LoadDiodePFB(object):
         if self._best_op is None:
             print('No solution found.')
         else:
-            intent, stack1, stack2, w, seg1, seg2, vgs_list, ro_list, cg_list = self._best_op
+            intent, stack1, stack2, w, seg1, seg2, vgs_list, ro_list, cg_list, vstar_list = self._best_op
 
             print('intent = %s, stack1 = %d, stack2 = %d, w = %.2g, seg1 = %d, seg2 = %d' %
                   (intent, stack1, stack2, w, seg1, seg2))
-            for name, val_list in (('vgs', vgs_list), ('ro', ro_list), ('cgg', cg_list)):
+            for name, val_list in (('vgs', vgs_list), ('ro', ro_list), ('cgg', cg_list), ('V*', vstar_list)):
                 print('%s = [%s]' % (name, ', '.join(['%.3g' % val for val in val_list])))
 
 
