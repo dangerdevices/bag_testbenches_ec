@@ -2,13 +2,13 @@
 
 import os
 import math
-import bisect
 from typing import List, Any, Tuple, Dict, Optional
 
 import yaml
 import numpy as np
 import scipy.constants
 import scipy.interpolate
+import matplotlib.pyplot as plt
 
 from bag.io import read_yaml, open_file
 from bag.core import BagProject, Testbench
@@ -47,7 +47,7 @@ class MOSCharSim(SimulationManager):
             # see if mos_type is one of the sweep.
             idx = self.swp_var_list.index('mos_type')
             return val_list[idx] == 'nch'
-        except:
+        except ValueError:
             # mos_type is not one of the sweep.
             return self.specs['sch_params']['mos_type'] == 'nch'
 
@@ -349,71 +349,6 @@ class MOSCharSim(SimulationManager):
 
         return info_dict
 
-    def get_best_design(self,
-                        fstart,  # type: Optional[float]
-                        fstop,  # type: Optional[float]
-                        vgd,  # type: float
-                        itarg=1e-6,  # type: float
-                        scale=1.0,  # type: float
-                        temp=300,  # type: float
-                        ntop=5,  # type: int
-                        ):
-        dsn_name_base = self.specs['dsn_name_base']
-
-        score_list = []
-        info_list = []
-        for val_list in self.get_combinations_iter():
-            dsn_name = self.get_instance_name(dsn_name_base, val_list)
-            info_dict = self.get_dsn_performance(dsn_name, fstart, fstop, vgd, itarg=itarg, scale=scale, temp=temp)
-            score, best_dict = self._get_best_op_point(info_dict)
-            best_dict['dsn_name'] = dsn_name
-
-            idx = bisect.bisect_left(score_list, score)
-            score_list.insert(idx, score)
-            info_list.insert(idx, best_dict)
-            if len(score_list) > ntop:
-                score_list.pop()
-                info_list.pop()
-
-        for idx, info in enumerate(info_list):
-            print('#%d design: %s' % (idx + 1, info['dsn_name']))
-            self._print_design_info(info)
-
-        return info_list[0]
-
-    @classmethod
-    def _print_design_info(cls, info):
-        out_names = ['vgn', 'gm', 'ro', 'cdd', 'ibias_unit', 'vgs']
-        units = [1e-9, 1e-6, 1e6, 1e-15, 1e-9, 1]
-        unit_names = ['nV', 'uS', 'MOhm', 'fF', 'nA', 'V']
-        use_max = [True, False, False, True, True, False]
-
-        m_list = []
-        for out, u, ustr, umax in zip(out_names, units, unit_names, use_max):
-            if umax:
-                val = np.max(info[out]) / u
-            else:
-                val = np.min(info[out]) / u
-            m_list.append('%s = %.2g %s' % (out, val, ustr))
-
-        print(', '.join(m_list))
-
-    @classmethod
-    def _get_best_op_point(cls, info_dict):
-        # minimize gate voltage noise.
-        vgn = info_dict['vgn']
-        best_idx = np.argmin(np.max(vgn, axis=0))
-        result = {}
-        for key, val in info_dict.items():
-            if key == 'corners':
-                result[key] = val
-            elif key != 'ibias_unit':
-                result[key] = val[:, best_idx]
-            else:
-                result[key] = val[best_idx]
-
-        return np.max(result['vgn']), result
-
     def plot_dsn_info(self,
                       dsn_name,  # type: str
                       fstart,  # type: Optional[float]
@@ -424,7 +359,6 @@ class MOSCharSim(SimulationManager):
                       temp=300,  # type: float
                       ):
         # type: (...) -> None
-        import matplotlib.pyplot as plt
 
         plt_names = ['vgn', 'gamma', 'gain', 'cdd']
         plt_unit_str = ['nV', '', '', 'fF']
@@ -469,7 +403,7 @@ class MOSCharSim(SimulationManager):
 
 if __name__ == '__main__':
 
-    config_file = 'mos_char_specs/mos_char_nch_stack.yaml'
+    config_file = 'mos_char_specs/mos_char_pch_stack2.yaml'
 
     local_dict = locals()
     if 'bprj' not in local_dict:
@@ -482,23 +416,19 @@ if __name__ == '__main__':
 
     sim = MOSCharSim(bprj, config_file)
 
-    # sim.run_lvs_rcx(tb_type='tb_ibias')
+    sim.run_lvs_rcx(tb_type='tb_ibias')
     # sim.run_simulations('tb_ibias')
-    # sim.process_ibias_data()
+    sim.process_ibias_data()
 
-    # sim.run_simulations('tb_sp')
-    # sim.run_simulations('tb_noise')
+    sim.run_simulations('tb_sp')
+    sim.run_simulations('tb_noise')
 
+    """
     fc = 100e3
     fbw = 500
-    vgd_opt_list = np.linspace(-0.18, 0.18, 6)
+    vgd_opt = 0.0
     temperature = 310
     inorm = 1e-6
-
-    fa = fc - fbw / 2
-    fb = fc + fbw / 2
-    for vgd_opt in vgd_opt_list:
-        print('vgd = %.4g V' % vgd_opt)
-        sim.get_best_design(fa, fb, vgd_opt, itarg=inorm, temp=temperature)
-    # dname = 'MOS_PCH_STACK_intent_svt_l_90n'
-    # sim.plot_dsn_info(dname, fc - fbw / 2, fc + fbw / 2, vgd_opt, itarg=inorm, temp=temperature)
+    dname = 'MOS_PCH_STACK_intent_svt_l_90n'
+    sim.plot_dsn_info(dname, fc - fbw / 2, fc + fbw / 2, vgd_opt, itarg=inorm, temp=temperature)
+    """
