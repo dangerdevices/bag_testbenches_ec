@@ -433,6 +433,34 @@ class MOSDB(object):
 
         return dsn_name
 
+    def get_function_list(self, name, **kwargs):
+        # type: (str, **kwargs) -> List[DiffFunction]
+        """Returns a list of functions, one for each simulation environment, for the given output.
+
+        Parameters
+        ----------
+        name : str
+            name of the function.
+        **kwargs :
+            design parameter values.
+
+        Returns
+        -------
+        output : Union[RegGridInterpVectorFunction, RegGridInterpFunction]
+            the output vector function.
+        """
+        dsn_name = self._get_dsn_name(**kwargs)
+        cur_dict = self._ss_dict[dsn_name]
+        fun_list = []
+        for env in self.env_list:
+            try:
+                env_idx = self._sim_envs.index(env)
+            except ValueError:
+                raise ValueError('environment %s not found.' % env)
+
+            fun_list.append(cur_dict[name][env_idx])
+        return fun_list
+
     def get_function(self, name, env='', **kwargs):
         # type: (str, str, **kwargs) -> Union[VectorDiffFunction, DiffFunction]
         """Returns a function for the given output.
@@ -451,20 +479,11 @@ class MOSDB(object):
         output : Union[RegGridInterpVectorFunction, RegGridInterpFunction]
             the output vector function.
         """
-        dsn_name = self._get_dsn_name(**kwargs)
-
-        cur_dict = self._ss_dict[dsn_name]
         if not env:
-            fun_list = []
-            for env in self.env_list:
-                try:
-                    env_idx = self._sim_envs.index(env)
-                except ValueError:
-                    raise ValueError('environment %s not found.' % env)
-
-                fun_list.append(cur_dict[name][env_idx])
-            return VectorDiffFunction(fun_list)
+            return VectorDiffFunction(self.get_function_list(name, **kwargs))
         else:
+            dsn_name = self._get_dsn_name(**kwargs)
+            cur_dict = self._ss_dict[dsn_name]
             try:
                 env_idx = self._sim_envs.index(env)
             except ValueError:
@@ -493,8 +512,18 @@ class MOSDB(object):
 
         return self._swp_names, sample_fun.input_ranges
 
+    def get_fun_arg(self, **kwargs):
+        # type: (**kwargs) -> np.multiarray.ndarray
+        """Convert keyword arguments to function argument."""
+        return np.array([kwargs[key] for key in self._swp_names])
+
+    def get_fun_arg_index(self, name):
+        # type: (str) -> int
+        """Returns the function input argument index for the given variable"""
+        return self._swp_names.index(name)
+
     def query(self, **kwargs):
-        # type: (**kwargs) -> Dict[str, np.ndarray]
+        # type: (**kwargs) -> Dict[str, np.multiarray.ndarray]
         """Query the database for the values associated with the given parameters.
 
         All parameters must be specified.
@@ -509,7 +538,7 @@ class MOSDB(object):
         results : Dict[str, np.ndarray]
             the characterization results.
         """
-        fun_arg = np.array([kwargs[key] for key in self._swp_names])
+        fun_arg = self.get_fun_arg(**kwargs)
 
         results = {name: self.get_function(name, **kwargs)(fun_arg) for name in self._fun_names}
 
