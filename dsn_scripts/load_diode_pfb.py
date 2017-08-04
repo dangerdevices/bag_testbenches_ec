@@ -6,6 +6,17 @@ from bag.io import read_yaml
 from ckt_dsn_ec.mos.core import MOSCharSS, MOSDB
 from ckt_dsn_ec.analog.amplifier.components import LoadDiodePFB
 
+
+def print_dsn_info(info):
+    for key, val in info.items():
+        if isinstance(val, list):
+            print('%s = [%s]' % (key, ', '.join(('%.3g' % v for v in val))))
+        elif isinstance(val, str):
+            print('%s = %s' % (key, val))
+        else:
+            print('%s = %.3g' % (key, val))
+
+
 if __name__ == '__main__':
     config_file = 'mos_char_specs/mos_char_nch_stack2.yaml'
     dsn_file = 'dsn_specs/load_diode_pfb.yaml'
@@ -25,5 +36,6 @@ if __name__ == '__main__':
 
     print('run design')
     load_dsn.design(**dsn_specs)
-    load_dsn.print_dsn_info()
+    dsn_info = load_dsn.get_dsn_info()
+    print_dsn_info(dsn_info)
     print('done')

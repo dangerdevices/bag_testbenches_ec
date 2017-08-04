@@ -281,31 +281,127 @@ class InputGm(object):
         vds_idx = self._db.get_fun_arg_index('vds')
 
         best_score = None
-        best_op = None
+        self._best_op = None
         for intent in self._intent_list:
             for stack in self._stack_list:
                 self._db.set_dsn_params(intent=intent, stack=stack)
                 ib = self._db.get_function_list('ibias')
                 gm = self._db.get_function_list('gm')
                 gds = self._db.get_function_list('gds')
-                iunit_list = self._solve_iunit_from_vstar(vstar_min, vg_list, vd_list, ib, gm)
-                tot_wunit = wnom * min((itarg / iunit for itarg, iunit in zip(itarg_list, iunit_list)))
-                # now get actual numbers
-                for w in valid_width_list:
-                    num_seg = int(tot_wunit / w // 2) * 2
-                    scale = w * num_seg / wnom
-                    vs_list = self._solve_vs(itarg_list, vg_list, vd_list, scale, ib)
 
-                    for gm_fun, gds_fun, rload, vg, vd, vs in zip(gm, gds, rload_list, vg_list, vd_list, vs_list):
-                        arg = self._db.get_fun_arg(vbs=vb - vs, vds=vd - vs, vgs=vg - vs)
-                        cur_gm = gm_fun(arg)
-                        cur_gds = gds_fun(arg)
-                        cur_gain = cur_gm / (1 / rload + cur_gds)
-                        if best_score is None or cur_gain > best_score:
-                            best_score = cur_gain
-                            best_op = (intent, stack, w, num_seg, vs_list)
+                # get valid vs range across simulation environments.
+                vgs_min, vgs_max = ib[0].get_input_range(vgs_idx)
+                vds_min, vds_max = ib[0].get_input_range(vds_idx)
+                vs_bnds = [(max(vg - vgs_max, vd - vds_max), min(vg - vgs_min, vd - vds_min))
+                           for vg, vd in zip(vg_list, vd_list)]
 
+                iunit_list = self._solve_iunit_from_vstar(vstar_min, vb, vg_list, vd_list, vs_bnds, ib, gm)
+                if iunit_list is not None:
+                    tot_wunit = wnom * min((itarg / iunit for itarg, iunit in zip(itarg_list, iunit_list)))
+                    # now get actual numbers
+                    for w in valid_width_list:
+                        num_seg = int(tot_wunit / w // 2) * 2
+                        scale = w * num_seg / wnom
+                        vs_list, score = self._solve_vs(itarg_list, vg_list, vd_list, vs_bnds, vb, scale,
+                                                        ib, gm, gds, rload_list)
+                        if score is not None and (best_score is None or score > best_score):
+                            best_score = score
+                            self._best_op = (intent, stack, w, num_seg, vg_list, vd_list, vs_list, vb)
 
+    def _solve_vs(self, itarg_list, vg_list, vd_list, vs_bnds, vb, scale, ib, gm, gds, ro_list):
+        vs_list = []
+        score = None
+        for itarg, ibf, gmf, gdsf, vg, vd, ro, (vs_min, vs_max) in \
+                zip(itarg_list, ib, gm, gds, vg_list, vd_list, ro_list, vs_bnds):
+
+            def zero_fun(vs):
+                arg = self._db.get_fun_arg(vbs=vb - vs, vd=vd - vs, vg=vg - vs)
+                return scale * ibf(arg) - itarg
+
+            v1 = zero_fun(vs_min)
+            v2 = zero_fun(vs_max)
+            if v1 < 0 and v2 < 0 or v1 > 0 and v2 > 0:
+                # no solution
+                return None, None
+
+            vs_cur = sciopt.brentq(zero_fun, vs_min, vs_max)
+            cur_arg = self._db.get_fun_arg(vbs=vb - vs_cur, vd=vd - vs_cur, vg=vg - vs_cur)
+            gm_cur = gmf(cur_arg) * scale
+            gds_cur = gdsf(cur_arg) * scale
+            score_cur = gm_cur / (gds_cur + 1 / ro)
+            if score is None:
+                score = score_cur
+            else:
+                score = min(score, score_cur)
+
+            vs_list.append(vs_cur)
+
+        return vs_list, score
+
+    def _solve_iunit_from_vstar(self, vstar_min, vb, vg_list, vd_list, vs_bnds, ib, gm):
+        iunit_list = []
+        for ibf, gmf, vg, vd, (vs_min, vs_max) in zip(ib, gm, vg_list, vd_list, vs_bnds):
+
+            def zero_fun(vs):
+                arg = self._db.get_fun_arg(vbs=vb - vs, vd=vd - vs, vg=vg - vs)
+                return 2 * ibf(arg) / gmf(arg) - vstar_min
+
+            v1 = zero_fun(vs_min)
+            v2 = zero_fun(vs_max)
+            if v1 < 0 and v2 < 0:
+                # cannot meet vstar_min spec
+                return None
+            elif v1 > 0 and v2 > 0:
+                vs_sol = vs_min if v1 < v2 else vs_max
+            else:
+                vs_sol = sciopt.brentq(zero_fun, vs_min, vs_max)
+
+            cur_arg = self._db.get_fun_arg(vbs=vb - vs_sol, vd=vd - vs_sol, vg=vg - vs_sol)
+            iunit_list.append(ibf(cur_arg))
+
+        return iunit_list
+
+    def get_dsn_info(self):
+        # type: () -> Optional[Dict[str, Any]]
+        if self._best_op is None:
+            return None
+
+        intent, stack, w, seg, vg_list, vd_list, vs_list, vb = self._best_op
+        wnom = self._db.get_default_dsn_value('w')
+
+        self._db.set_dsn_params(intent=intent, stack=stack)
+        ib = self._db.get_function_list('ibias')
+        gm = self._db.get_function_list('gm')
+        gds = self._db.get_function_list('gds')
+        cgg = self._db.get_function_list('cgg')
+        cdd = self._db.get_function_list('cdd')
+
+        k = w * seg / wnom
+        vstar_list, gm_list, ro_list, cgg_list, cdd_list = [], [], [], [], []
+        for ibf, gmf, gdsf, cggf, cddf, vg, vd, vs in zip(ib, gm, gds, cgg, cdd, vg_list, vd_list, vs_list):
+            arg = self._db.get_fun_arg(vbs=vb - vs, vds=vd - vs, vgs=vg - vs)
+            cur_ib = k * ibf(arg)
+            cur_gm = k * gmf(arg)
+            cur_gds = k * gdsf(arg)
+            cur_cgg = k * cggf(arg)
+            cur_cdd = k * cddf(arg)
+            vstar_list.append(2 * cur_ib / cur_gm)
+            ro_list.append(1 / cur_gds)
+            cgg_list.append(cur_cgg)
+            cdd_list.append(cur_cdd)
+
+        return dict(
+            vstar=vstar_list,
+            gm=gm_list,
+            ro=ro_list,
+            cgg=cgg_list,
+            cdd=cdd_list,
+            intent=intent,
+            stack=stack,
+            w=w,
+            seg=seg,
+            vs=vs_list,
+        )
 
 
 """
