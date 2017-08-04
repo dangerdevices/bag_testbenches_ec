@@ -93,7 +93,7 @@ class LoadDiodePFB(object):
                             seg1 = seg1_iter.get_next()
                             scale1 = scale * seg1
 
-                            seg2_iter = BinaryIterator(seg1, None, step=2)
+                            seg2_iter = BinaryIterator(0, None, step=2)
                             while seg2_iter.has_next():
                                 seg2 = seg2_iter.get_next()
                                 scale2 = scale * seg2

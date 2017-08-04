@@ -8,13 +8,16 @@ from ckt_dsn_ec.analog.amplifier.components import LoadDiodePFB
 
 
 def print_dsn_info(info):
-    for key, val in info.items():
-        if isinstance(val, list):
-            print('%s = [%s]' % (key, ', '.join(('%.3g' % v for v in val))))
-        elif isinstance(val, str):
-            print('%s = %s' % (key, val))
-        else:
-            print('%s = %.3g' % (key, val))
+    if info is None:
+        print('No solution found')
+    else:
+        for key, val in info.items():
+            if isinstance(val, list):
+                print('%s = [%s]' % (key, ', '.join(('%.3g' % v for v in val))))
+            elif isinstance(val, str):
+                print('%s = %s' % (key, val))
+            else:
+                print('%s = %.3g' % (key, val))
 
 
 if __name__ == '__main__':
