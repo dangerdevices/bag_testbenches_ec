@@ -315,7 +315,7 @@ class InputGm(object):
                 zip(itarg_list, ib, gm, gds, vg_list, vd_list, ro_list, vs_bnds):
 
             def zero_fun(vs):
-                arg = self._db.get_fun_arg(vbs=vb - vs, vd=vd - vs, vg=vg - vs)
+                arg = self._db.get_fun_arg(vbs=vb - vs, vds=vd - vs, vgs=vg - vs)
                 return scale * ibf(arg) - itarg
 
             v1 = zero_fun(vs_min)
@@ -325,7 +325,7 @@ class InputGm(object):
                 return None, None
 
             vs_cur = sciopt.brentq(zero_fun, vs_min, vs_max)
-            cur_arg = self._db.get_fun_arg(vbs=vb - vs_cur, vd=vd - vs_cur, vg=vg - vs_cur)
+            cur_arg = self._db.get_fun_arg(vbs=vb - vs_cur, vds=vd - vs_cur, vgs=vg - vs_cur)
             gm_cur = gmf(cur_arg) * scale
             gds_cur = gdsf(cur_arg) * scale
             score_cur = gm_cur / (gds_cur + 1 / ro)
@@ -343,7 +343,7 @@ class InputGm(object):
         for ibf, gmf, vg, vd, (vs_min, vs_max) in zip(ib, gm, vg_list, vd_list, vs_bnds):
 
             def zero_fun(vs):
-                arg = self._db.get_fun_arg(vbs=vb - vs, vd=vd - vs, vg=vg - vs)
+                arg = self._db.get_fun_arg(vbs=vb - vs, vds=vd - vs, vgs=vg - vs)
                 return 2 * ibf(arg) / gmf(arg) - vstar_min
 
             v1 = zero_fun(vs_min)
@@ -356,7 +356,7 @@ class InputGm(object):
             else:
                 vs_sol = sciopt.brentq(zero_fun, vs_min, vs_max)
 
-            cur_arg = self._db.get_fun_arg(vbs=vb - vs_sol, vd=vd - vs_sol, vg=vg - vs_sol)
+            cur_arg = self._db.get_fun_arg(vbs=vb - vs_sol, vds=vd - vs_sol, vgs=vg - vs_sol)
             iunit_list.append(ibf(cur_arg))
 
         return iunit_list
