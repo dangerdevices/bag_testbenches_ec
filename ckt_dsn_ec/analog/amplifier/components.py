@@ -244,6 +244,7 @@ class InputGm(object):
                vds_tail_min,  # type: float
                l,  # type: float
                valid_width_list,  # type: List[Union[float, int]]
+               seg_min=2,  # type: int
                ):
         # type: (...) -> None
         """Design the input gm stage.
@@ -268,6 +269,8 @@ class InputGm(object):
             channel length.
         valid_width_list : List[Union[float, int]]
             list of valid width values.
+        seg_min : int
+            minimum number of segments.
         """
         # simple error checking.
         if 'l' in self._dsn_params:
@@ -303,15 +306,16 @@ class InputGm(object):
                     tot_wunit = wnom * min((itarg / iunit for itarg, iunit in zip(itarg_list, iunit_list)))
                     # now get actual numbers
                     for w in valid_width_list:
-                        num_seg = int(tot_wunit / w // 2) * 2
+                        num_seg = max(seg_min, int(tot_wunit / w // 2) * 2)
                         scale = w * num_seg / wnom
                         vs_list, score = self._solve_vs(itarg_list, vg_list, vd_list, vs_bnds, vb, scale,
-                                                        ib, gm, gds, rload_list, vds_tail_min)
+                                                        ib, gm, gds, rload_list, vds_tail_min, vstar_min)
                         if score is not None and (best_score is None or score > best_score):
                             best_score = score
                             self._best_op = (intent, stack, w, num_seg, vg_list, vd_list, vs_list, vb)
 
-    def _solve_vs(self, itarg_list, vg_list, vd_list, vs_bnds, vb, scale, ib, gm, gds, ro_list, vds_tail_min):
+    def _solve_vs(self, itarg_list, vg_list, vd_list, vs_bnds, vb, scale, ib, gm, gds, ro_list,
+                  vds_tail_min, vstar_min):
         vs_list = []
         score = None
         for itarg, ibf, gmf, gdsf, vg, vd, ro, (vs_min, vs_max) in \
@@ -327,11 +331,15 @@ class InputGm(object):
                 # no solution
                 return None, None
 
-            vs_cur = sciopt.brentq(zero_fun, vs_min, vs_max)
+            vs_cur = sciopt.brentq(zero_fun, vs_min, vs_max)  # type: float
             if abs(vs_cur - vb) < vds_tail_min:
                 return None, None
             cur_arg = self._db.get_fun_arg(vbs=vb - vs_cur, vds=vd - vs_cur, vgs=vg - vs_cur)
             gm_cur = gmf(cur_arg) * scale
+            ib_cur = ibf(cur_arg) * scale
+            if 2 * ib_cur / gm_cur < vstar_min:
+                # check V* spec again
+                return None, None
             gds_cur = gdsf(cur_arg) * scale
             score_cur = gm_cur / (gds_cur + 1 / ro)
             if score is None:
