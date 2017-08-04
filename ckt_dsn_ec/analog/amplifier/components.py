@@ -76,7 +76,7 @@ class LoadDiodePFB(object):
                 gm1 = self._db.get_function_list('gm')
                 vgs1_min, vgs1_max = ib1[0].get_input_range(vgs_idx)
 
-                for idx2 in range(idx1 + 1, num_stack):
+                for idx2 in range(idx1, num_stack):
                     stack2 = self._stack_list[idx2]
                     self._db.set_dsn_params(stack=stack2)
                     ib2 = self._db.get_function_list('ibias')
@@ -241,6 +241,7 @@ class InputGm(object):
                rload_list,  # type: List[float]
                vb,  # type: float
                vstar_min,  # type: float
+               vds_tail_min,  # type: float
                l,  # type: float
                valid_width_list,  # type: List[Union[float, int]]
                ):
@@ -261,6 +262,8 @@ class InputGm(object):
             body bias voltage.
         vstar_min : float
             minimum V* of the diode.
+        vds_tail_min : float
+            minimum absolute vds voltage of tail device.
         l : float
             channel length.
         valid_width_list : List[Union[float, int]]
@@ -303,12 +306,12 @@ class InputGm(object):
                         num_seg = int(tot_wunit / w // 2) * 2
                         scale = w * num_seg / wnom
                         vs_list, score = self._solve_vs(itarg_list, vg_list, vd_list, vs_bnds, vb, scale,
-                                                        ib, gm, gds, rload_list)
+                                                        ib, gm, gds, rload_list, vds_tail_min)
                         if score is not None and (best_score is None or score > best_score):
                             best_score = score
                             self._best_op = (intent, stack, w, num_seg, vg_list, vd_list, vs_list, vb)
 
-    def _solve_vs(self, itarg_list, vg_list, vd_list, vs_bnds, vb, scale, ib, gm, gds, ro_list):
+    def _solve_vs(self, itarg_list, vg_list, vd_list, vs_bnds, vb, scale, ib, gm, gds, ro_list, vds_tail_min):
         vs_list = []
         score = None
         for itarg, ibf, gmf, gdsf, vg, vd, ro, (vs_min, vs_max) in \
@@ -325,6 +328,8 @@ class InputGm(object):
                 return None, None
 
             vs_cur = sciopt.brentq(zero_fun, vs_min, vs_max)
+            if abs(vs_cur - vb) < vds_tail_min:
+                return None, None
             cur_arg = self._db.get_fun_arg(vbs=vb - vs_cur, vds=vd - vs_cur, vgs=vg - vs_cur)
             gm_cur = gmf(cur_arg) * scale
             gds_cur = gdsf(cur_arg) * scale
@@ -352,6 +357,7 @@ class InputGm(object):
                 # cannot meet vstar_min spec
                 return None
             elif v1 > 0 and v2 > 0:
+                # NOTE: for very small V*, it may be the case that V* versus vs is not monotonic.
                 vs_sol = vs_min if v1 < v2 else vs_max
             else:
                 vs_sol = sciopt.brentq(zero_fun, vs_min, vs_max)
@@ -389,6 +395,7 @@ class InputGm(object):
             ro_list.append(1 / cur_gds)
             cgg_list.append(cur_cgg)
             cdd_list.append(cur_cdd)
+            gm_list.append(cur_gm)
 
         return dict(
             vstar=vstar_list,
