@@ -43,8 +43,12 @@ class bag_ec_testbenches__mos_tb_sp(Module):
     Fill in high level description here.
     """
 
+    param_list = ['dut_lib', 'dut_cell']
+
     def __init__(self, bag_config, parent=None, prj=None, **kwargs):
         Module.__init__(self, bag_config, yaml_file, parent=parent, prj=prj, **kwargs)
+        for par in self.param_list:
+            self.parameters[par] = None
 
     def design(self, dut_lib='', dut_cell='', ):
         """To be overridden by subclasses to design this module.
@@ -62,6 +66,9 @@ class bag_ec_testbenches__mos_tb_sp(Module):
         restore_instance()
         array_instance()
         """
+        self.parameters['dut_lib'] = dut_lib
+        self.parameters['dut_cell'] = dut_cell
+
         self.replace_instance_master('XDUT', lib_name=dut_lib, cell_name=dut_cell, static=True)
 
     def get_layout_params(self, **kwargs):

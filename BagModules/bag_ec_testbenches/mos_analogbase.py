@@ -43,8 +43,12 @@ class bag_ec_testbenches__mos_analogbase(Module):
     Fill in high level description here.
     """
 
+    param_list = ['mos_type', 'w', 'l', 'nf', 'intent', 'ndum', 'stack']
+
     def __init__(self, bag_config, parent=None, prj=None, **kwargs):
         Module.__init__(self, bag_config, yaml_file, parent=parent, prj=prj, **kwargs)
+        for par in self.param_list:
+            self.parameters[par] = None
 
     def design(self, mos_type='nch', w=4, l=16e-9, nf=10, intent='standard', ndum=4, stack=1):
         """To be overridden by subclasses to design this module.
@@ -62,6 +66,12 @@ class bag_ec_testbenches__mos_analogbase(Module):
         restore_instance()
         array_instance()
         """
+        local_dict = locals()
+        for par in self.param_list:
+            if par not in local_dict:
+                raise Exception('Parameter %s not defined' % par)
+            self.parameters[par] = local_dict[par]
+
         if nf == 1:
             raise ValueError('Cannot make 1 finger transistor.')
         # select the correct transistor type
