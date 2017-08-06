@@ -21,7 +21,7 @@ def print_dsn_info(info):
 
 
 if __name__ == '__main__':
-    config_file = 'mos_char_specs/mos_char_nch_stack2.yaml'
+    config_file = 'mos_char_specs/mos_char_nch_stack_w2.yaml'
     dsn_file = 'dsn_specs/load_diode_pfb.yaml'
 
     noise_fstart = 20e3

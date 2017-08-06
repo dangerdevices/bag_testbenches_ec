@@ -21,8 +21,8 @@ def print_dsn_info(info):
 
 
 if __name__ == '__main__':
-    nch_config = 'mos_char_specs/mos_char_nch_stack2.yaml'
-    pch_config = 'mos_char_specs/mos_char_pch_stack2.yaml'
+    nch_config = 'mos_char_specs/mos_char_nch_stack_w2.yaml'
+    pch_config = 'mos_char_specs/mos_char_pch_stack_w2.yaml'
     load_specs = 'dsn_specs/load_diode_pfb.yaml'
     gm_specs = 'dsn_specs/input_gm.yaml'
 
