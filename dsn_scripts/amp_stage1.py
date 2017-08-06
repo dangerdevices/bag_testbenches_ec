@@ -51,6 +51,7 @@ if __name__ == '__main__':
 
     gm_specs['vd_list'] = load_info['vgs']
     gm_specs['rload_list'] = load_info['ro']
+    gm_specs['stack_list'] = [load_info['stack2']]
 
     print('design gm')
     gm_dsn.design(**gm_specs)

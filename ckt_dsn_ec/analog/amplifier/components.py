@@ -245,6 +245,7 @@ class InputGm(object):
                l,  # type: float
                valid_width_list,  # type: List[Union[float, int]]
                seg_min=2,  # type: int
+               stack_list=None,  # type: Optional[List[int]]
                ):
         # type: (...) -> None
         """Design the input gm stage.
@@ -271,6 +272,8 @@ class InputGm(object):
             list of valid width values.
         seg_min : int
             minimum number of segments.
+        stack_list : Optional[List[str]]
+            If given, we will only consider these stack values.
         """
         # simple error checking.
         if 'l' in self._dsn_params:
@@ -286,10 +289,13 @@ class InputGm(object):
         vgs_idx = self._db.get_fun_arg_index('vgs')
         vds_idx = self._db.get_fun_arg_index('vds')
 
+        if stack_list is None:
+            stack_list = self._stack_list
+
         best_score = None
         self._best_op = None
         for intent in self._intent_list:
-            for stack in self._stack_list:
+            for stack in stack_list:
                 self._db.set_dsn_params(intent=intent, stack=stack)
                 ib = self._db.get_function_list('ibias')
                 gm = self._db.get_function_list('gm')
