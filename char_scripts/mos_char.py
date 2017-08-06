@@ -403,7 +403,7 @@ class MOSCharSim(SimulationManager):
 
 if __name__ == '__main__':
 
-    config_file = 'mos_char_specs/mos_char_pch_stack2.yaml'
+    config_file = 'mos_char_specs/mos_char_nch_stack.yaml'
 
     local_dict = locals()
     if 'bprj' not in local_dict:
@@ -420,8 +420,8 @@ if __name__ == '__main__':
     # sim.run_simulations('tb_ibias')
     sim.process_ibias_data()
 
-    sim.run_simulations('tb_sp')
-    sim.run_simulations('tb_noise')
+    # sim.run_simulations('tb_sp')
+    # sim.run_simulations('tb_noise')
 
     """
     fc = 100e3
