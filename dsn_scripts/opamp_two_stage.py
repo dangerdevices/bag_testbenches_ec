@@ -4,7 +4,7 @@
 from bag.io import read_yaml
 
 from ckt_dsn_ec.mos.core import MOSDBDiscrete
-from ckt_dsn_ec.analog.amplifier.components import LoadDiodePFB, InputGm
+from ckt_dsn_ec.analog.amplifier.opamp_two_stage import OpAmpTwoStage
 
 
 def print_dsn_info(info):
@@ -23,16 +23,14 @@ def print_dsn_info(info):
 if __name__ == '__main__':
     nch_config = 'mos_char_specs/mos_char_nch_stack_w2.yaml'
     pch_config = 'mos_char_specs/mos_char_pch_stack_w2.yaml'
-    load_specs = 'dsn_specs/load_diode_pfb.yaml'
-    gm_specs = 'dsn_specs/input_gm.yaml'
+    amp_specs_fname = 'dsn_specs/opamp_two_stage.yaml'
 
     noise_fstart = 20e3
     noise_fstop = noise_fstart + 500
     noise_scale = 1.0
     noise_temp = 310
 
-    load_specs = read_yaml(load_specs)
-    gm_specs = read_yaml(gm_specs)
+    amp_specs = read_yaml(amp_specs_fname)
 
     print('create transistor database')
     nch_db = MOSDBDiscrete([2], [nch_config], 1, noise_fstart, noise_fstop,
@@ -40,24 +38,9 @@ if __name__ == '__main__':
     pch_db = MOSDBDiscrete([2], [pch_config], 1, noise_fstart, noise_fstop,
                            noise_scale=noise_scale, noise_temp=noise_temp)
 
-    print('create design class')
-    load_dsn = LoadDiodePFB(nch_db)
-    gm_dsn = InputGm(pch_db)
+    print('create design')
+    dsn = OpAmpTwoStage(nch_db, pch_db)
+    print('run design')
+    dsn.design(**amp_specs)
 
-    print('design load')
-    load_dsn.design(**load_specs)
-    load_info = load_dsn.get_dsn_info()
-    print('load info:')
-    print_dsn_info(load_info)
-
-    gm_specs['vd_list'] = load_info['vgs']
-    gm_specs['rload_list'] = load_info['ro']
-    gm_specs['stack_list'] = [load_info['stack_ngm']]
-
-    print('design gm')
-    gm_dsn.design(**gm_specs)
-    gm_info = gm_dsn.get_dsn_info()
-    print('gm info:')
-    print_dsn_info(gm_info)
-
-    print('done')
+    print_dsn_info(dsn.get_dsn_info())
