@@ -405,6 +405,10 @@ class MOSDBDiscrete(object):
         self._ss_list = []
         for spec in spec_list:
             sim = MOSCharSS(None, spec)
+            # error checking
+            if 'w' in sim.swp_var_list:
+                raise ValueError('MOSDBDiscrete assumes transistor width is not swept.')
+
             corners, ss_dict = sim.get_ss_info(noise_fstart, noise_fstop, scale=noise_scale, temp=noise_temp)
             if self._sim_envs is None:
                 self._sim_envs = corners
@@ -419,6 +423,12 @@ class MOSDBDiscrete(object):
         self._dsn_params = dict(w=width_list[0])
         self._swp_names = self._sim_list[0].get_ss_sweep_names()
         self._fun_names = self._sim_list[0].get_ss_output_names()
+
+    @property
+    def width_list(self):
+        # type: () -> List[Union[float, int]]
+        """Returns the list of widths in this database."""
+        return [w * self._width_res for w in self._width_list]
 
     @property
     def env_list(self):
@@ -452,7 +462,7 @@ class MOSDBDiscrete(object):
         # type: (**kwargs) -> None
         """Set the design parameters for which this database will query for."""
         self._dsn_params.update(kwargs)
-        w_unit = int(round(kwargs['w'] / self._width_res))
+        w_unit = int(round(self._dsn_params['w'] / self._width_res))
         self._cur_idx = self._width_list.index(w_unit)
 
     def _get_dsn_name(self, **kwargs):

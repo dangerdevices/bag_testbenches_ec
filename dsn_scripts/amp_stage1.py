@@ -3,7 +3,7 @@
 
 from bag.io import read_yaml
 
-from ckt_dsn_ec.mos.core import MOSCharSS, MOSDB
+from ckt_dsn_ec.mos.core import MOSDBDiscrete
 from ckt_dsn_ec.analog.amplifier.components import LoadDiodePFB, InputGm
 
 
@@ -35,10 +35,11 @@ if __name__ == '__main__':
     gm_specs = read_yaml(gm_specs)
 
     print('create transistor database')
-    nch_sim = MOSCharSS(None, nch_config)
-    nch_db = MOSDB(nch_sim, noise_fstart, noise_fstop, noise_scale=noise_scale, noise_temp=noise_temp)
-    pch_sim = MOSCharSS(None, pch_config)
-    pch_db = MOSDB(pch_sim, noise_fstart, noise_fstop, noise_scale=noise_scale, noise_temp=noise_temp)
+    nch_db = MOSDBDiscrete([2], [nch_config], 1, noise_fstart, noise_fstop,
+                           noise_scale=noise_scale, noise_temp=noise_temp)
+    pch_db = MOSDBDiscrete([2], [pch_config], 1, noise_fstart, noise_fstop,
+                           noise_scale=noise_scale, noise_temp=noise_temp)
+
     print('create design class')
     load_dsn = LoadDiodePFB(nch_db)
     gm_dsn = InputGm(pch_db)
@@ -51,7 +52,7 @@ if __name__ == '__main__':
 
     gm_specs['vd_list'] = load_info['vgs']
     gm_specs['rload_list'] = load_info['ro']
-    gm_specs['stack_list'] = [load_info['stack2']]
+    gm_specs['stack_list'] = [load_info['stack_ngm']]
 
     print('design gm')
     gm_dsn.design(**gm_specs)

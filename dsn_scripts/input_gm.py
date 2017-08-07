@@ -3,7 +3,7 @@
 
 from bag.io import read_yaml
 
-from ckt_dsn_ec.mos.core import MOSCharSS, MOSDB
+from ckt_dsn_ec.mos.core import MOSDBDiscrete
 from ckt_dsn_ec.analog.amplifier.components import InputGm
 
 
@@ -21,7 +21,7 @@ def print_dsn_info(info):
 
 
 if __name__ == '__main__':
-    pch_config = 'mos_char_specs/mos_char_pch_stack2.yaml'
+    pch_config = 'mos_char_specs/mos_char_pch_stack_w2.yaml'
     gm_specs = 'dsn_specs/input_gm.yaml'
 
     noise_fstart = 20e3
@@ -32,9 +32,8 @@ if __name__ == '__main__':
     gm_specs = read_yaml(gm_specs)
 
     print('create transistor database')
-    pch_sim = MOSCharSS(None, pch_config)
-    pch_db = MOSDB(pch_sim, noise_fstart, noise_fstop, noise_scale=noise_scale, noise_temp=noise_temp)
-
+    pch_db = MOSDBDiscrete([2], [pch_config], 1, noise_fstart, noise_fstop,
+                           noise_scale=noise_scale, noise_temp=noise_temp)
     print('create design class')
     gm_dsn = InputGm(pch_db)
 
