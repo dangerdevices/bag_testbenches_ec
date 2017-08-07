@@ -138,6 +138,7 @@ class OpAmpTwoStage(object):
         # design load
         load.design(itarg_list, vstar_load_min, l)
         load_info = load.get_dsn_info()
+        gm2_list = load_info['gm']
         ro_load_list = load_info['ro']
         cdd_load_list = load_info['co']
         stack_ngm = load_info['stack_ngm']
@@ -168,6 +169,9 @@ class OpAmpTwoStage(object):
         tail1_info = tail1.get_dsn_info()
         rn2_list = tail1_info['ro2']
 
+        # design stage 2 gm
+
+
         self._amp_info = dict(
             vtail=vtail_list,
             vmid=vd_list,
@@ -180,6 +184,7 @@ class OpAmpTwoStage(object):
             rt1=tail1_info['ro1'],
             gain1=gain1_list,
             c1=c1_list,
+            gm2=gm2_list,
 
             w_tail1=tail1_info['w'],
             intent_tail1=tail1_info['intent'],
