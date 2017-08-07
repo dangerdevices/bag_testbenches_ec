@@ -4,7 +4,7 @@
 
 import os
 import math
-from typing import List, Any, Tuple, Dict, Optional, Union
+from typing import List, Any, Tuple, Dict, Optional, Union, Sequence
 
 import yaml
 import numpy as np
@@ -12,7 +12,7 @@ import scipy.constants
 import scipy.interpolate
 
 from bag.io import read_yaml, open_file
-from bag.core import Testbench
+from bag.core import Testbench, BagProject
 from bag.data import Waveform
 from bag.data.mos import mos_y_to_ss
 from bag.tech.core import SimulationManager
@@ -61,6 +61,7 @@ class MOSCharSS(SimulationManager):
     """
 
     def __init__(self, prj, spec_file):
+        # type: (Optional[BagProject], str) -> None
         super(MOSCharSS, self).__init__(prj, spec_file)
 
     @classmethod
@@ -244,6 +245,7 @@ class MOSCharSS(SimulationManager):
         axis_names = ['corner', 'vds', 'vgs']
         delta_list = [1e-6, 1e-6]
         corner_list = None
+        corner_sort_arg = None  # type: Sequence[int]
         total_dict = {}
         for val_list in self.get_combinations_iter():
             dsn_name = self.get_instance_name(dsn_name_base, val_list)
@@ -254,7 +256,9 @@ class MOSCharSS(SimulationManager):
             ss_dict = mos_y_to_ss(results, char_freq, fg, ibias)
 
             if corner_list is None:
-                corner_list = results['corner'].tolist()
+                corner_list = results['corner']
+                corner_sort_arg = np.argsort(corner_list)  # type: Sequence[int]
+                corner_list = corner_list[corner_sort_arg].tolist()
 
             points = results['vds'], results['vgs']
 
@@ -267,7 +271,7 @@ class MOSCharSS(SimulationManager):
             for key in list(ss_dict.keys()):
                 new_data = np.transpose(ss_dict[key], axes=order)
                 fun_list = []
-                for idx in range(len(corner_list)):
+                for idx in corner_sort_arg:
                     fun_list.append(LinearInterpolator(points, new_data[idx, ...], delta_list, extrapolate=True))
                 ss_dict[key] = fun_list
 
@@ -302,6 +306,7 @@ class MOSCharSS(SimulationManager):
         axis_names = ['corner', 'vds', 'vgs', 'freq']
         delta_list = [1e-6, 1e-6, 1e-3]
         corner_list = log_freq = None
+        corner_sort_arg = None  # type: Sequence[int]
         output_dict = {}
         for val_list in self.get_combinations_iter():
             dsn_name = self.get_instance_name(dsn_name_base, val_list)
@@ -309,7 +314,9 @@ class MOSCharSS(SimulationManager):
             out = np.log(scale / fg * results['idn'] ** 2)
 
             if corner_list is None:
-                corner_list = results['corner'].tolist()
+                corner_list = results['corner']
+                corner_sort_arg = np.argsort(corner_list)  # type: Sequence[int]
+                corner_list = corner_list[corner_sort_arg].tolist()
                 log_freq = np.log(results['freq'])
 
             points = results['vds'], results['vgs'], log_freq
@@ -323,7 +330,7 @@ class MOSCharSS(SimulationManager):
             order = [swp_vars.index(name) for name in axis_names]
             fun_list = []
             out_trans = np.transpose(out, axes=order)
-            for idx in range(len(corner_list)):
+            for idx in corner_sort_arg:
                 noise_fun = LinearInterpolator(points, out_trans[idx, ...], delta_list, extrapolate=True)
                 integ_noise = noise_fun.integrate(fstart_log, fstop_log, axis=-1, logx=True, logy=True)
                 fun_list.append(integ_noise)
@@ -350,16 +357,20 @@ class MOSCharSS(SimulationManager):
         return corner_list, tot_dict
 
 
-class MOSDB(object):
-    """The transistor small signal parameters database.
+class MOSDBDiscrete(object):
+    """Transistor small signal parameters database with discrete width choices.
 
     This class provides useful query/optimization methods and ways to store/retrieve
     data.
 
     Parameters
     ----------
-    mos_sim : MOSCharSS
-        transistor simulator object.
+    width_list : List[Union[float, int]]
+        list of valid widths.
+    spec_list : List[str]
+        list of specification file locations corresponding to widths.
+    width_res : Union[float, int]
+        width resolution.
     noise_fstart : float
         noise integration frequency lower bound.
     noise_fstop : float
@@ -371,20 +382,43 @@ class MOSDB(object):
     """
 
     def __init__(self,
-                 mos_sim,  # type: MOSCharSS
+                 width_list,  # type: List[Union[float, int]]
+                 spec_list,  # type: List[str]
+                 width_res,  # type: Union[float, int]
                  noise_fstart,  # type: float
                  noise_fstop,  # type: float
                  noise_scale=1.0,  # type: float
                  noise_temp=300,  # type: float
                  ):
         # type: (...) -> None
-        self._sim = mos_sim
-        self._sim_envs, self._ss_dict = mos_sim.get_ss_info(noise_fstart, noise_fstop,
-                                                            scale=noise_scale, temp=noise_temp)
+        # error checking
+        if len(width_list) != len(spec_list):
+            raise ValueError('width_list and spec_list length mismatch.')
+        if not width_list:
+            raise ValueError('Must have at least one entry.')
+
+        self._width_res = width_res
+        self._width_list = [int(round(w / width_res)) for w in width_list]
+
+        self._sim_envs = None
+        self._sim_list = []
+        self._ss_list = []
+        for spec in spec_list:
+            sim = MOSCharSS(None, spec)
+            corners, ss_dict = sim.get_ss_info(noise_fstart, noise_fstop, scale=noise_scale, temp=noise_temp)
+            if self._sim_envs is None:
+                self._sim_envs = corners
+            elif self._sim_envs != corners:
+                raise ValueError('Simulation environments mismatch between given specs.')
+
+            self._sim_list.append(sim)
+            self._ss_list.append(ss_dict)
+
         self._env_list = self._sim_envs
-        self._dsn_params = {}
-        self._swp_names = self._sim.get_ss_sweep_names()
-        self._fun_names = self._sim.get_ss_output_names()
+        self._cur_idx = 0
+        self._dsn_params = dict(w=width_list[0])
+        self._swp_names = self._sim_list[0].get_ss_sweep_names()
+        self._fun_names = self._sim_list[0].get_ss_output_names()
 
     @property
     def env_list(self):
@@ -402,33 +436,32 @@ class MOSDB(object):
     def dsn_params(self):
         # type: () -> Tuple[str, ...]
         """List of design parameters."""
-        return self._sim.swp_var_list
+        return self._sim_list[self._cur_idx].swp_var_list
 
     def get_default_dsn_value(self, var):
         # type: (str) -> Any
         """Returns the default design parameter values."""
-        return self._sim.get_default_dsn_value(var)
+        return self._sim_list[self._cur_idx].get_default_dsn_value(var)
 
     def get_dsn_param_values(self, var):
         # type: (str) -> List[Any]
         """Returns a list of valid design parameter values."""
-        return self._sim.get_swp_var_values(var)
+        return self._sim_list[self._cur_idx].get_swp_var_values(var)
 
     def set_dsn_params(self, **kwargs):
         # type: (**kwargs) -> None
         """Set the design parameters for which this database will query for."""
         self._dsn_params.update(kwargs)
+        w_unit = int(round(kwargs['w'] / self._width_res))
+        self._cur_idx = self._width_list.index(w_unit)
 
     def _get_dsn_name(self, **kwargs):
         # type: (**kwargs) -> str
         if kwargs:
-            cur_dsn_params = self._dsn_params.copy()
-            cur_dsn_params.update(kwargs)
-            dsn_name = self._sim.get_design_name(cur_dsn_params)
-        else:
-            dsn_name = self._sim.get_design_name(self._dsn_params)
+            self.set_dsn_params(**kwargs)
+        dsn_name = self._sim_list[self._cur_idx].get_design_name(self._dsn_params)
 
-        if dsn_name not in self._ss_dict:
+        if dsn_name not in self._ss_list[self._cur_idx]:
             raise ValueError('Unknown design name: %s.  Did you set design parameters?' % dsn_name)
 
         return dsn_name
@@ -450,7 +483,7 @@ class MOSDB(object):
             the output vector function.
         """
         dsn_name = self._get_dsn_name(**kwargs)
-        cur_dict = self._ss_dict[dsn_name]
+        cur_dict = self._ss_list[self._cur_idx][dsn_name]
         fun_list = []
         for env in self.env_list:
             try:
@@ -483,7 +516,7 @@ class MOSDB(object):
             return VectorDiffFunction(self.get_function_list(name, **kwargs))
         else:
             dsn_name = self._get_dsn_name(**kwargs)
-            cur_dict = self._ss_dict[dsn_name]
+            cur_dict = self._ss_list[self._cur_idx][dsn_name]
             try:
                 env_idx = self._sim_envs.index(env)
             except ValueError:
@@ -508,7 +541,7 @@ class MOSDB(object):
             list of parameter range
         """
         dsn_name = self._get_dsn_name(**kwargs)
-        sample_fun = self._ss_dict[dsn_name]['gm'][0]
+        sample_fun = self._ss_list[self._cur_idx][dsn_name]['gm'][0]
 
         return self._swp_names, sample_fun.input_ranges
 
