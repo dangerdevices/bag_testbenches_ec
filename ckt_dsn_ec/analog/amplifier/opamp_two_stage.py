@@ -47,8 +47,8 @@ class OpAmpTwoStage(object):
         # design load
         load.design(itarg_list, vstar_load_min, l)
         load_info = load.get_dsn_info()
-        rload_list = load_info['ro']
-        cload_list = load_info['co']
+        ro_load_list = load_info['ro']
+        cdd_load_list = load_info['co']
         stack_ngm = load_info['stack_ngm']
         if pmos_input:
             vd_list = load_info['vgs']
@@ -58,16 +58,16 @@ class OpAmpTwoStage(object):
             vb = 0
 
         # design input gm
-        gm.design(itarg_list, vg_list, vd_list, rload_list, vb, vstar_gm_min, vds_tail_min, l,
+        gm.design(itarg_list, vg_list, vd_list, ro_load_list, vb, vstar_gm_min, vds_tail_min, l,
                   seg_min=seg_gm_min, stack_list=[stack_ngm])
         gm_info = gm.get_dsn_info()
         gm1_list = gm_info['gm']
-        cdd_gm = gm_info['cdd']
-        ro_gm = gm_info['ro']
+        cdd_gm_list = gm_info['cdd']
+        ro_gm_list = gm_info['ro']
 
-        ro1_list = [1 / (1/rogm + 1/rol) for rogm, rol in zip(ro_gm, rload_list)]
-        gain1_list = [g * r for g, r in zip(gm1_list, ro1_list)]
-        c1_list = [cl + cg for cl, cg in zip(cload_list, cdd_gm)]
+        ro1_list = [1 / (1/ro_gm + 1/ro_load) for ro_gm, ro_load in zip(ro_gm_list, ro_load_list)]
+        gain1_list = [gm1 * ro1 for gm1, ro1 in zip(gm1_list, ro1_list)]
+        c1_list = [cd_l + cd_g for cd_l, cd_g in zip(cdd_load_list, cdd_gm_list)]
 
         self._amp_info = dict(
             vtail=gm_info['vs'],
