@@ -9,7 +9,7 @@ import scipy.optimize as sciopt
 
 from bag.math import gcd
 from bag.data.lti import LTICircuit, get_stability_margins, get_w_crossings
-from bag.util.search import FloatBinaryIterator
+from bag.util.search import FloatBinaryIterator, BinaryIterator
 
 from ckt_dsn_ec.mos.core import MOSDBDiscrete
 
@@ -197,8 +197,8 @@ class OpAmpTwoStage(object):
         # design stage 2 gm
         ro2_list = [1/(gds_l + 1 / ro_t) for gds_l, ro_t in zip(gds2_list, rn2_list)]
         c2_list = [cd_l + cd_t for cd_l, cd_t in zip(cdd_load_list, cdd_tail_list)]
-        self.design_stage2(gm1_list, gm2_list, ro1_list, ro2_list, c1_list, c2_list,
-                           cload, res_var, phase_margin, f_unit, seg_gm, seg_diode, seg_ngm)
+        stage2_results = self.design_stage2(gm1_list, gm2_list, ro1_list, ro2_list, c1_list, c2_list,
+                                            cload, res_var, phase_margin, f_unit, seg_gm, seg_diode, seg_ngm)
 
         self._amp_info = dict(
             vtail=vtail_list,
@@ -212,10 +212,9 @@ class OpAmpTwoStage(object):
             rt1=tail1_info['ro1'],
             gain1=gain1_list,
             c1=c1_list,
-            gm2=gm2_list,
 
-            w_tail1=tail1_info['w'],
-            intent_tail1=tail1_info['intent'],
+            w_tail=tail1_info['w'],
+            intent_tail=tail1_info['intent'],
 
             w_gm=gm_info['w'],
             intent_gm=gm_info['intent'],
@@ -230,9 +229,21 @@ class OpAmpTwoStage(object):
             stack_ngm=stack_ngm,
         )
 
+        self._amp_info.update(stage2_results)
+
     def get_dsn_info(self):
         # type: () -> Optional[Dict[str, Any]]
         return self._amp_info
+
+    @classmethod
+    def _get_stage2_ss(cls, gm2_list, ro2_list, c2_list, cload, f, cur_size):
+        cur_gm2_list, cur_ro2_list, cur_c2_list = [], [], []
+        for gm2, ro2, c2 in zip(gm2_list, ro2_list, c2_list):
+            cur_gm2_list.append(gm2 * cur_size / f)
+            cur_ro2_list.append(ro2 * f / cur_size)
+            cur_c2_list.append(cload + c2 * cur_size / f)
+
+        return cur_gm2_list, cur_ro2_list, cur_c2_list
 
     def design_stage2(self, gm1_list, gm2_list, ro1_list, ro2_list, c1_list, c2_list,
                       cload, res_var, phase_margin, f_unit, seg_tail, seg_diode, seg_ngm):
@@ -241,27 +252,35 @@ class OpAmpTwoStage(object):
         if f % 2 != 0:
             raise ValueError('All segment numbers must be even.')
         f //= 2
-        cur_size = 1
 
-        found = False
-        while not found:
-            cur_gm2_list, cur_ro2_list, cur_c2_list = [], [], []
-            for gm2, ro2, c2 in zip(gm2_list, ro2_list, c2_list):
-                cur_gm2_list.append(gm2 * cur_size / f)
-                cur_ro2_list.append(ro2 * f / cur_size)
-                cur_c2_list.append(cload + c2 * cur_size / f)
+        bin_iter = BinaryIterator(1, None)
+        results = {}
+        while bin_iter.has_next():
+            cur_size = bin_iter.get_next()
+            cur_gm2_list, cur_ro2_list, cur_c2_list = self._get_stage2_ss(gm2_list, ro2_list, c2_list,
+                                                                          cload, f, cur_size)
 
             rz, cf, gain_list, bw_list, pm_list = self._find_rz_cf(gm1_list, cur_gm2_list, ro1_list, cur_ro2_list,
                                                                    c1_list, cur_c2_list, res_var, phase_margin)
 
-            print('cur_scale = %d / %d' % (cur_size, f))
-            print('gain: [%s]' % (', '.join(('%.3g' % v for v in gain_list))))
-            print('bw: [%s]' % (', '.join(('%.3g' % v for v in bw_list))))
-            print('pm: [%s]' % (', '.join(('%.3g' % v for v in pm_list))))
             if min(bw_list) > f_unit:
-                found = True
+                bin_iter.save()
+                bin_iter.down()
+                results['rz'] = rz
+                results['cf'] = cf
+                results['gain'] = gain_list
+                results['f_unit'] = bw_list
+                results['phase_margin'] = pm_list
+                results['gm2'] = cur_gm2_list
+                results['ro2'] = cur_ro2_list
+                results['c2'] = cur_c2_list
+                results['seg_diode2'] = seg_diode * cur_size // f
+                results['seg_ngm2'] = seg_ngm * cur_size // f
+                results['seg_tail2'] = seg_tail * cur_size // f
             else:
-                cur_size += 1
+                bin_iter.up()
+
+        return results
 
     @classmethod
     def _make_circuit(cls, gm1, gm2, r1, r2, c1, c2, rz):
@@ -311,7 +330,7 @@ class OpAmpTwoStage(object):
             cir.add_cap(cf_min, 'vm', 'vo')
             num, den = cir.get_num_den('vi', 'vo')
             pn = np.poly1d(num)
-            pd = np.poly1d(num)
+            pd = np.poly1d(den)
             gain_list.append(abs(pn(0) / pd(0)))
             bw_list.append(get_w_crossings(num, den)[0] / 2 / np.pi)
             pm_list.append(get_stability_margins(num, den)[0])
