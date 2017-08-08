@@ -403,7 +403,7 @@ class MOSCharSim(SimulationManager):
 
 if __name__ == '__main__':
 
-    config_file = 'mos_char_specs/mos_char_pch_stack_w2.yaml'
+    config_file = 'mos_char_specs/mos_char_pch_stack_w2_vbs.yaml'
 
     local_dict = locals()
     if 'bprj' not in local_dict:

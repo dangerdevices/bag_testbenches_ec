@@ -65,11 +65,6 @@ class MOSCharSS(SimulationManager):
         super(MOSCharSS, self).__init__(prj, spec_file)
 
     @classmethod
-    def get_ss_sweep_names(cls):
-        # type: () -> List[str]
-        return ['vds', 'vgs']
-
-    @classmethod
     def get_ss_output_names(cls):
         # type: () -> List[str]
         return ['ibias', 'gm', 'gds', 'gb', 'cgd', 'cgs', 'cds', 'cgb', 'cdb', 'csb', 'gamma']
@@ -144,11 +139,25 @@ class MOSCharSS(SimulationManager):
         else:
             vgs_info = self.get_vgs_specs()
             vgs_start, vgs_stop = vgs_info[dsn_name]
+            vbs_val = tb_params['vbs']
+
+            # handle VBS sign and set parameters.
+            if isinstance(vbs_val, list):
+                if is_nmos:
+                    vbs_val = sorted((-abs(v) for v in vbs_val))
+                else:
+                    vbs_val = sorted((abs(v) for v in vbs_val))
+                tb.set_sweep_parameter('vbs', values=vbs_val)
+            else:
+                if is_nmos:
+                    vbs_val = -abs(vbs_val)
+                else:
+                    vbs_val = abs(vbs_val)
+                tb.set_parameter('vbs', vbs_val)
 
             if tb_type == 'tb_sp':
                 tb.set_parameter('vgs_num', tb_params['vgs_num'])
                 tb.set_parameter('sp_freq', tb_params['sp_freq'])
-                tb.set_parameter('vbs', tb_params['vbs'])
 
                 vds_min = tb_params['vds_min']
                 vds_max = tb_params['vds_max']
@@ -168,7 +177,6 @@ class MOSCharSS(SimulationManager):
                 tb.set_parameter('freq_start', tb_params['freq_start'])
                 tb.set_parameter('freq_stop', tb_params['freq_stop'])
                 tb.set_parameter('num_per_dec', tb_params['num_per_dec'])
-                tb.set_parameter('vbs', tb_params['vbs'])
 
                 vds_min = tb_params['vds_min']
                 vds_max = tb_params['vds_max']
@@ -233,7 +241,7 @@ class MOSCharSS(SimulationManager):
                 yaml.dump(ans, f)
 
     def _get_ss_params(self):
-        # type: () -> Tuple[List[str], Dict[str, Dict[str, List[LinearInterpolator]]]]
+        # type: () -> Tuple[List[str], List[str], Dict[str, Dict[str, List[LinearInterpolator]]]]
         tb_type = 'tb_sp'
         tb_specs = self.specs[tb_type]
         sch_params = self.specs['sch_params']
@@ -242,9 +250,9 @@ class MOSCharSS(SimulationManager):
         fg = sch_params['nf']
         char_freq = tb_specs['tb_params']['sp_freq']
 
-        axis_names = ['corner', 'vds', 'vgs']
-        delta_list = [1e-6, 1e-6]
-        corner_list = None
+        axis_names = ['corner', 'vbs', 'vds', 'vgs']
+        ss_swp_names = None  # type: List[str]
+        delta_list = corner_list = None
         corner_sort_arg = None  # type: Sequence[int]
         total_dict = {}
         for val_list in self.get_combinations_iter():
@@ -256,23 +264,25 @@ class MOSCharSS(SimulationManager):
             ss_dict = mos_y_to_ss(results, char_freq, fg, ibias)
 
             if corner_list is None:
+                ss_swp_names = [name for name in axis_names[1:] if name in results]
+                delta_list = [1e-6] * len(ss_swp_names)
                 corner_list = results['corner']
                 corner_sort_arg = np.argsort(corner_list)  # type: Sequence[int]
                 corner_list = corner_list[corner_sort_arg].tolist()
 
-            points = results['vds'], results['vgs']
+            cur_points = [results[name] for name in ss_swp_names]
 
             # rearrange array axis
             sweep_params = results['sweep_params']
             swp_vars = sweep_params['ibias']
-            order = [swp_vars.index(name) for name in axis_names]
+            order = [swp_vars.index(name) for name in axis_names if name in swp_vars]
             # just to be safe, we create a list copy to avoid modifying dictionary
             # while iterating over view.
             for key in list(ss_dict.keys()):
                 new_data = np.transpose(ss_dict[key], axes=order)
                 fun_list = []
                 for idx in corner_sort_arg:
-                    fun_list.append(LinearInterpolator(points, new_data[idx, ...], delta_list, extrapolate=True))
+                    fun_list.append(LinearInterpolator(cur_points, new_data[idx, ...], delta_list, extrapolate=True))
                 ss_dict[key] = fun_list
 
             # derived ss parameters
@@ -280,7 +290,7 @@ class MOSCharSS(SimulationManager):
 
             total_dict[dsn_name] = ss_dict
 
-        return corner_list, total_dict
+        return corner_list, ss_swp_names, total_dict
 
     @classmethod
     def _add_derived_ss_params(cls, ss_dict):
@@ -303,8 +313,9 @@ class MOSCharSS(SimulationManager):
 
         fg = sch_params['nf']
 
-        axis_names = ['corner', 'vds', 'vgs', 'freq']
-        delta_list = [1e-6, 1e-6, 1e-3]
+        axis_names = ['corner', 'vbs', 'vds', 'vgs', 'freq']
+        ss_swp_names = None  # type: List[str]
+        delta_list = None
         corner_list = log_freq = None
         corner_sort_arg = None  # type: Sequence[int]
         output_dict = {}
@@ -314,12 +325,15 @@ class MOSCharSS(SimulationManager):
             out = np.log(scale / fg * results['idn'] ** 2)
 
             if corner_list is None:
+                ss_swp_names = [name for name in axis_names[1:] if name in results]
+                delta_list = [1e-6] * len(ss_swp_names)
+                delta_list[-1] = 1e-3
                 corner_list = results['corner']
                 corner_sort_arg = np.argsort(corner_list)  # type: Sequence[int]
                 corner_list = corner_list[corner_sort_arg].tolist()
                 log_freq = np.log(results['freq'])
 
-            points = results['vds'], results['vgs'], log_freq
+            cur_points = [results[name] for name in ss_swp_names]
 
             fstart_log = log_freq[0] if fstart is None else np.log(fstart)
             fstop_log = log_freq[-1] if fstop is None else np.log(fstop)
@@ -327,11 +341,11 @@ class MOSCharSS(SimulationManager):
             # rearrange array axis
             sweep_params = results['sweep_params']
             swp_vars = sweep_params['idn']
-            order = [swp_vars.index(name) for name in axis_names]
+            order = [swp_vars.index(name) for name in axis_names if name in swp_vars]
             fun_list = []
             out_trans = np.transpose(out, axes=order)
             for idx in corner_sort_arg:
-                noise_fun = LinearInterpolator(points, out_trans[idx, ...], delta_list, extrapolate=True)
+                noise_fun = LinearInterpolator(cur_points, out_trans[idx, ...], delta_list, extrapolate=True)
                 integ_noise = noise_fun.integrate(fstart_log, fstop_log, axis=-1, logx=True, logy=True)
                 fun_list.append(integ_noise)
             output_dict[dsn_name] = fun_list
@@ -344,8 +358,8 @@ class MOSCharSS(SimulationManager):
                     scale=1.0,  # type: float
                     temp=300,  # type: float
                     ):
-        # type: (...) -> Tuple[List[str], Dict[str, Dict[str, List[LinearInterpolator]]]]
-        corner_list, tot_dict = self._get_ss_params()
+        # type: (...) -> Tuple[List[str], List[str], Dict[str, Dict[str, List[LinearInterpolator]]]]
+        corner_list, ss_swp_names, tot_dict = self._get_ss_params()
         _, noise_dict = self._get_integrated_noise(fstart, fstop, scale=scale)
 
         k = scale * (fstop - fstart) * 4 * scipy.constants.Boltzmann * temp
@@ -354,7 +368,7 @@ class MOSCharSS(SimulationManager):
             noise_var = noise_dict[key]
             val['gamma'] = [nf / gmf / k for nf, gmf in zip(noise_var, gm)]
 
-        return corner_list, tot_dict
+        return corner_list, ss_swp_names, tot_dict
 
 
 class MOSDBDiscrete(object):
@@ -401,6 +415,7 @@ class MOSDBDiscrete(object):
         self._width_list = [int(round(w / width_res)) for w in width_list]
 
         self._sim_envs = None
+        self._ss_swp_names = None
         self._sim_list = []
         self._ss_list = []
         for spec in spec_list:
@@ -409,11 +424,15 @@ class MOSDBDiscrete(object):
             if 'w' in sim.swp_var_list:
                 raise ValueError('MOSDBDiscrete assumes transistor width is not swept.')
 
-            corners, ss_dict = sim.get_ss_info(noise_fstart, noise_fstop, scale=noise_scale, temp=noise_temp)
+            corners, ss_swp_names, ss_dict = sim.get_ss_info(noise_fstart, noise_fstop,
+                                                             scale=noise_scale, temp=noise_temp)
             if self._sim_envs is None:
+                self._ss_swp_names = ss_swp_names
                 self._sim_envs = corners
             elif self._sim_envs != corners:
                 raise ValueError('Simulation environments mismatch between given specs.')
+            elif self._ss_swp_names != ss_swp_names:
+                raise ValueError('signal-signal parameter sweep names mismatch.')
 
             self._sim_list.append(sim)
             self._ss_list.append(ss_dict)
@@ -421,8 +440,6 @@ class MOSDBDiscrete(object):
         self._env_list = self._sim_envs
         self._cur_idx = 0
         self._dsn_params = dict(w=width_list[0])
-        self._swp_names = self._sim_list[0].get_ss_sweep_names()
-        self._fun_names = self._sim_list[0].get_ss_output_names()
 
     @property
     def width_list(self):
@@ -553,17 +570,17 @@ class MOSDBDiscrete(object):
         dsn_name = self._get_dsn_name(**kwargs)
         sample_fun = self._ss_list[self._cur_idx][dsn_name]['gm'][0]
 
-        return self._swp_names, sample_fun.input_ranges
+        return self._ss_swp_names, sample_fun.input_ranges
 
     def get_fun_arg(self, **kwargs):
         # type: (**kwargs) -> np.multiarray.ndarray
         """Convert keyword arguments to function argument."""
-        return np.array([kwargs[key] for key in self._swp_names])
+        return np.array([kwargs[key] for key in self._ss_swp_names])
 
     def get_fun_arg_index(self, name):
         # type: (str) -> int
         """Returns the function input argument index for the given variable"""
-        return self._swp_names.index(name)
+        return self._ss_swp_names.index(name)
 
     def query(self, **kwargs):
         # type: (**kwargs) -> Dict[str, np.multiarray.ndarray]
@@ -583,9 +600,9 @@ class MOSDBDiscrete(object):
         """
         fun_arg = self.get_fun_arg(**kwargs)
 
-        results = {name: self.get_function(name, **kwargs)(fun_arg) for name in self._fun_names}
+        results = {name: self.get_function(name, **kwargs)(fun_arg) for name in MOSCharSS.get_ss_output_names()}
 
-        for key in self._swp_names:
+        for key in self._ss_swp_names:
             results[key] = kwargs[key]
 
         return results
