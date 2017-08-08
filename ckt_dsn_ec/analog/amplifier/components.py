@@ -175,32 +175,44 @@ class LoadDiodePFB(object):
         self._db.set_dsn_params(w=w, intent=intent, stack=stack1)
         ib1 = self._db.get_function_list('ibias')
         gm1 = self._db.get_function_list('gm')
+        gds1 = self._db.get_function_list('gds')
         cg1 = self._db.get_function_list('cgg')
+        cd1 = self._db.get_function_list('cdd')
         self._db.set_dsn_params(w=w, intent=intent, stack=stack2)
         ib2 = self._db.get_function_list('ibias')
         gm2 = self._db.get_function_list('gm')
+        gds2 = self._db.get_function_list('gds')
         cg2 = self._db.get_function_list('cgg')
+        cd2 = self._db.get_function_list('cdd')
 
-        vstar_list, ro_list, co_list, gm_list = [], [], [], []
-        for ib1f, gm1f, cg1f, ib2f, gm2f, cg2f, vgs in zip(ib1, gm1, cg1, ib2, gm2, cg2, vgs_list):
+        vstar_list, ro_list, cgg_list, cdd_list, gm_list, gds_list = [], [], [], [], [], []
+        for ib1f, gm1f, gds1f, cg1f, cd1f, ib2f, gm2f, gds2f, cg2f, cd2f, vgs in \
+                zip(ib1, gm1, gds1, cg1, cd1, ib2, gm2, gds2, cg2, cd2, vgs_list):
             arg = self._db.get_fun_arg(vbs=0, vds=vgs, vgs=vgs)
-            cur_ib1 = seg1 * ib1f(arg)
-            cur_ib2 = seg2 * ib2f(arg)
-            cur_gm1 = seg1 * gm1f(arg)
-            cur_gm2 = seg2 * gm2f(arg)
-            cur_cg1 = seg1 * cg1f(arg)
-            cur_cg2 = seg2 * cg2f(arg)
+            cur_ib1 = seg1 * float(ib1f(arg))
+            cur_ib2 = seg2 * float(ib2f(arg))
+            cur_gm1 = seg1 * float(gm1f(arg))
+            cur_gm2 = seg2 * float(gm2f(arg))
+            cur_gds1 = seg1 * float(gds1f(arg))
+            cur_gds2 = seg2 * float(gds2f(arg))
+            cur_cg1 = seg1 * float(cg1f(arg))
+            cur_cg2 = seg2 * float(cg2f(arg))
+            cur_cd1 = seg1 * float(cd1f(arg))
+            cur_cd2 = seg2 * float(cd2f(arg))
+            gds_list.append(cur_gds1 + cur_gds2)
             gm_list.append(cur_gm1 + cur_gm2)
             vstar_list.append(2 * (cur_ib1 + cur_ib2) / (cur_gm1 + cur_gm2))
             ro_list.append(1 / (cur_gm1 - cur_gm2))
-            co_list.append(cur_cg1 + cur_cg2)
-
+            cgg_list.append(cur_cg1 + cur_cg2)
+            cdd_list.append(cur_cd1 + cur_cd2)
         return dict(
             vgs=vgs_list,
             vstar=vstar_list,
             gm=gm_list,
+            gds=gds_list,
             ro=ro_list,
-            co=co_list,
+            cgg=cgg_list,
+            cdd=cdd_list,
             intent=intent,
             stack_diode=stack1,
             stack_ngm=stack2,
@@ -386,11 +398,11 @@ class InputGm(object):
         vstar_list, gm_list, ro_list, cgg_list, cdd_list = [], [], [], [], []
         for ibf, gmf, gdsf, cggf, cddf, vg, vd, vs in zip(ib, gm, gds, cgg, cdd, vg_list, vd_list, vs_list):
             arg = self._db.get_fun_arg(vbs=vb - vs, vds=vd - vs, vgs=vg - vs)
-            cur_ib = seg * ibf(arg)
-            cur_gm = seg * gmf(arg)
-            cur_gds = seg * gdsf(arg)
-            cur_cgg = seg * cggf(arg)
-            cur_cdd = seg * cddf(arg)
+            cur_ib = seg * float(ibf(arg))
+            cur_gm = seg * float(gmf(arg))
+            cur_gds = seg * float(gdsf(arg))
+            cur_cgg = seg * float(cggf(arg))
+            cur_cdd = seg * float(cddf(arg))
             vstar_list.append(2 * cur_ib / cur_gm)
             ro_list.append(1 / cur_gds)
             cgg_list.append(cur_cgg)
