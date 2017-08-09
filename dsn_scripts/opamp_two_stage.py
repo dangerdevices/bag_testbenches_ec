@@ -21,12 +21,12 @@ def print_dsn_info(info):
 
 
 if __name__ == '__main__':
-    w_list = [2, 4]
+    w_list = [2]
     nch_conf_list = ['data/mos_char_nch_stack_w2/specs.yaml',
-                     'data/mos_char_nch_stack/specs.yaml',
+                     # 'data/mos_char_nch_stack/specs.yaml',
                      ]
-    pch_conf_list = ['data/mos_char_pch_stack_w2/specs.yaml',
-                     'data/mos_char_pch_stack/specs.yaml',
+    pch_conf_list = ['data/mos_char_pch_stack_w2_vbs/specs.yaml',
+                     # 'data/mos_char_pch_stack/specs.yaml',
                      ]
     amp_specs_fname = 'dsn_specs/opamp_two_stage.yaml'
 

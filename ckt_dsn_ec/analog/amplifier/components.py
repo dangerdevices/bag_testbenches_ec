@@ -71,6 +71,7 @@ class LoadDiodePFB(object):
                     self._db.set_dsn_params(w=w, intent=intent, stack=stack1)
                     ib1 = self._db.get_function_list('ibias')
                     gm1 = self._db.get_function_list('gm')
+                    gds1 = self._db.get_function_list('gds')
                     vgs1_min, vgs1_max = ib1[0].get_input_range(vgs_idx)
 
                     for idx2 in range(idx1, num_stack):
@@ -78,6 +79,7 @@ class LoadDiodePFB(object):
                         self._db.set_dsn_params(stack=stack2)
                         ib2 = self._db.get_function_list('ibias')
                         gm2 = self._db.get_function_list('gm')
+                        gds2 = self._db.get_function_list('gds')
                         vgs2_min, vgs2_max = ib2[0].get_input_range(vgs_idx)
 
                         vgs_min = max(vgs1_min, vgs2_min)
@@ -101,7 +103,7 @@ class LoadDiodePFB(object):
                                     seg2_iter.down()
                                 else:
                                     cur_score = self._compute_score(vstar_min, seg1, seg2, ib1, ib2,
-                                                                    gm1, gm2, vgs_list)
+                                                                    gm1, gm2, gds1, gds2, vgs_list)
 
                                     if cur_score is None:
                                         seg2_iter.down()
@@ -150,19 +152,22 @@ class LoadDiodePFB(object):
 
         return vgs_list, 0
 
-    def _compute_score(self, vstar_min, scale1, scale2, ib1, ib2, gm1, gm2, vgs_list):
+    def _compute_score(self, vstar_min, scale1, scale2, ib1, ib2, gm1, gm2, gds1, gds2, vgs_list):
         score = float('inf')
-        for fib1, fib2, fgm1, fgm2, vgs in zip(ib1, ib2, gm1, gm2, vgs_list):
+        for fib1, fib2, fgm1, fgm2, fgds1, fgds2, vgs in zip(ib1, ib2, gm1, gm2, gds1, gds2, vgs_list):
             arg = self._db.get_fun_arg(vbs=0, vds=vgs, vgs=vgs)
             cur_gm1 = scale1 * fgm1(arg)
             cur_gm2 = scale2 * fgm2(arg)
+            cur_gds1 = scale1 * fgds1(arg)
+            cur_gds2 = scale2 * fgds2(arg)
             cur_ib1 = scale1 * fib1(arg)
             cur_ib2 = scale2 * fib2(arg)
             cur_vstar = 2 * (cur_ib1 + cur_ib2) / (cur_gm1 + cur_gm2)
-            if cur_gm2 >= cur_gm1 or cur_vstar < vstar_min:
+            cur_gds_tot = cur_gds1 + cur_gds2 + cur_gm1 - cur_gm2
+            if cur_gm1 <= cur_gm2 or cur_vstar < vstar_min:
                 return None
 
-            score = min(score, (cur_gm1 + cur_gm2) / (cur_gm1 - cur_gm2))
+            score = min(score, (cur_gm1 + cur_gm2) / cur_gds_tot)
 
         return score
 
@@ -202,7 +207,7 @@ class LoadDiodePFB(object):
             gds_list.append(cur_gds1 + cur_gds2)
             gm_list.append(cur_gm1 + cur_gm2)
             vstar_list.append(2 * (cur_ib1 + cur_ib2) / (cur_gm1 + cur_gm2))
-            ro_list.append(1 / (cur_gm1 - cur_gm2))
+            ro_list.append(1 / (cur_gds1 + cur_gds2 + cur_gm1 - cur_gm2))
             cgg_list.append(cur_cg1 + cur_cg2)
             cdd_list.append(cur_cd1 + cur_cd2)
         return dict(
