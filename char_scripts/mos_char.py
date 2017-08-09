@@ -23,8 +23,8 @@ if __name__ == '__main__':
     # sim.run_simulations('tb_ibias')
     # sim.process_ibias_data()
 
-    sim.run_simulations('tb_sp')
-    sim.run_simulations('tb_noise')
+    # sim.run_simulations('tb_sp')
+    sim.run_simulations('tb_noise', overwrite=False)
 
     """
     fc = 100e3
