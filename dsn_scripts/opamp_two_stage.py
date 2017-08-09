@@ -1,24 +1,12 @@
 # -*- coding: utf-8 -*-
 
 
+import pprint
+
 from bag.io import read_yaml
 
 from ckt_dsn_ec.mos.core import MOSDBDiscrete
 from ckt_dsn_ec.analog.amplifier.opamp_two_stage import OpAmpTwoStage
-
-
-def print_dsn_info(info):
-    if info is None:
-        print('No solution found')
-    else:
-        for key, val in info.items():
-            if isinstance(val, list):
-                print('%s = [%s]' % (key, ', '.join(('%.3g' % v for v in val))))
-            elif isinstance(val, str):
-                print('%s = %s' % (key, val))
-            else:
-                print('%s = %.3g' % (key, val))
-
 
 if __name__ == '__main__':
     w_list = [2]
@@ -48,4 +36,4 @@ if __name__ == '__main__':
     print('run design')
     dsn.design(**amp_specs)
 
-    print_dsn_info(dsn.get_dsn_info())
+    pprint.pprint(dsn.get_dsn_info(), width=120)

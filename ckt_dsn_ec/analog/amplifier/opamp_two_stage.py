@@ -144,6 +144,7 @@ class OpAmpTwoStage(object):
                seg_gm_min,  # type: int
                vdd,  # type: float
                pmos_input=True,  # type: bool
+               max_ref_ratio=20,  # type: int
                ):
         if pmos_input:
             load = LoadDiodePFB(self._nch_db)
@@ -200,6 +201,22 @@ class OpAmpTwoStage(object):
         stage2_results = self.design_stage2(gm1_list, gm2_list, ro1_list, ro2_list, c1_list, c2_list,
                                             cload, res_var, phase_margin, f_unit, seg_gm, seg_diode, seg_ngm)
 
+        sch_info = dict(
+            w_dict={'load': load_info['w'], 'in': gm_info['w'], 'tail': tail1_info['w']},
+            th_dict={'load': load_info['intent'], 'in': gm_info['intent'], 'tail': tail1_info['intent']},
+            stack_dict={'tail': stack_gm, 'in': stack_gm, 'diode': stack_diode, 'ngm': stack_ngm},
+            seg_dict={'tail1': seg_gm,
+                      'tail2': stage2_results['seg_tail2'],
+                      'tailcm': stage2_results['seg_tailcm'],
+                      'in': seg_gm,
+                      'ref': max(2, seg_gm // max_ref_ratio),
+                      'diode1': seg_diode,
+                      'ngm1': seg_ngm,
+                      'diode2': stage2_results['seg_diode2'],
+                      'ngm2': stage2_results['seg_ngm2'],
+                      }
+        )
+
         self._amp_info = dict(
             vtail=vtail_list,
             vmid=vd_list,
@@ -212,24 +229,18 @@ class OpAmpTwoStage(object):
             rt1=tail1_info['ro1'],
             gain1=gain1_list,
             c1=c1_list,
+            gm2=stage2_results['gm2'],
+            ro2=stage2_results['ro2'],
+            c2=stage2_results['c2'],
 
-            w_tail=tail1_info['w'],
-            intent_tail=tail1_info['intent'],
+            rz=stage2_results['rz'],
+            cf=stage2_results['cf'],
+            gain_tot=stage2_results['gain'],
+            f_unit=stage2_results['f_unit'],
+            phase_margin=stage2_results['phase_margin'],
 
-            w_gm=gm_info['w'],
-            intent_gm=gm_info['intent'],
-            seg_gm=seg_gm,
-            stack_gm=stack_gm,
-
-            w_load=load_info['w'],
-            intent_load=load_info['intent'],
-            seg_diode=seg_diode,
-            seg_ngm=seg_ngm,
-            stack_diode=stack_diode,
-            stack_ngm=stack_ngm,
+            sch_info=sch_info,
         )
-
-        self._amp_info.update(stage2_results)
 
     def get_dsn_info(self):
         # type: () -> Optional[Dict[str, Any]]
@@ -253,7 +264,10 @@ class OpAmpTwoStage(object):
             raise ValueError('All segment numbers must be even.')
         f //= 2
 
-        bin_iter = BinaryIterator(1, None)
+        # make sure we have enough tail fingers for common mode feedback
+        min_size = 2 if seg_tail // f == 2 else 1
+
+        bin_iter = BinaryIterator(min_size, None)
         results = {}
         while bin_iter.has_next():
             cur_size = bin_iter.get_next()
@@ -264,6 +278,9 @@ class OpAmpTwoStage(object):
                                                                    c1_list, cur_c2_list, res_var, phase_margin)
 
             if min(bw_list) > f_unit:
+                seg_tail2_tot = seg_tail * cur_size // f
+                seg_tail2 = (seg_tail2_tot // 4) * 2
+                seg_tailcm = seg_tail2_tot - seg_tail2
                 bin_iter.save()
                 bin_iter.down()
                 results['rz'] = rz
@@ -276,7 +293,8 @@ class OpAmpTwoStage(object):
                 results['c2'] = cur_c2_list
                 results['seg_diode2'] = seg_diode * cur_size // f
                 results['seg_ngm2'] = seg_ngm * cur_size // f
-                results['seg_tail2'] = seg_tail * cur_size // f
+                results['seg_tail2'] = seg_tail2
+                results['seg_tailcm'] = seg_tailcm
             else:
                 bin_iter.up()
 
