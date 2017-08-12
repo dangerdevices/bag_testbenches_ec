@@ -37,8 +37,8 @@ yaml_file = pkg_resources.resource_filename(__name__, os.path.join('netlist_info
 
 
 # noinspection PyPep8Naming
-class bag_ec_testbenches__bias_sources(Module):
-    """Module for library bag_ec_testbenches cell bias_sources.
+class bag_testbenches_ec__bias_sources(Module):
+    """Module for library bag_testbenches_ec cell bias_sources.
 
     Fill in high level description here.
     """

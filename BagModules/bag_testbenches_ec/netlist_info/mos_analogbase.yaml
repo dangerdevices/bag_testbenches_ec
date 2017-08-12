@@ -1,4 +1,4 @@
-lib_name: bag_ec_testbenches
+lib_name: bag_testbenches_ec
 cell_name: mos_analogbase
 pins: [ "d", "g", "s", "b" ]
 instances:

@@ -1,4 +1,4 @@
-lib_name: bag_ec_testbenches
+lib_name: bag_testbenches_ec
 cell_name: mos_tb_sp
 pins: [  ]
 instances:
@@ -191,7 +191,7 @@ instances:
         net_name: "gnd!"
         num_bits: 1
   XDUT:
-    lib_name: bag_ec_testbenches
+    lib_name: bag_testbenches_ec
     cell_name: mos_analogbase
     instpins:
       s:

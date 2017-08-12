@@ -1,4 +1,4 @@
-lib_name: bag_ec_testbenches
+lib_name: bag_testbenches_ec
 cell_name: bias_sources
 pins: [ "VSS", "VDD", "ibias", "vbias" ]
 instances:

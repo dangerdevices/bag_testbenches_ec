@@ -33,12 +33,12 @@ import pkg_resources
 from bag.design import Module
 
 
-yaml_file = pkg_resources.resource_filename(__name__, os.path.join('netlist_info', 'mos_tb_ibias.yaml'))
+yaml_file = pkg_resources.resource_filename(__name__, os.path.join('netlist_info', 'mos_tb_sp.yaml'))
 
 
 # noinspection PyPep8Naming
-class bag_ec_testbenches__mos_tb_ibias(Module):
-    """Module for library bag_ec_testbenches cell mos_tb_ibias.
+class bag_testbenches_ec__mos_tb_sp(Module):
+    """Module for library bag_testbenches_ec cell mos_tb_sp.
 
     Fill in high level description here.
     """
