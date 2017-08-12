@@ -214,7 +214,8 @@ class MOSCharSS(SimulationManager):
         ans = {}
         for val_list in self.get_combinations_iter():
             # invert PMOS ibias sign
-            ibias_sgn = 1.0 if self.is_nmos(val_list) else -1.0
+            is_nmos = self.is_nmos(val_list)
+            ibias_sgn = 1.0 if is_nmos else -1.0
             results = self.get_sim_results(tb_type, val_list)
 
             # assume first sweep parameter is corner, second sweep parameter is vgs
@@ -224,10 +225,18 @@ class MOSCharSS(SimulationManager):
 
             wv_max = Waveform(vgs, np.amax(ibias, corner_idx), 1e-6, order=2)
             wv_min = Waveform(vgs, np.amin(ibias, corner_idx), 1e-6, order=2)
-            vgs_min = wv_max.get_crossing(ibias_min_fg * fg)
-            vgs_max = wv_min.get_crossing(ibias_max_fg * fg)
-            if vgs_min > vgs_max:
-                vgs_min, vgs_max = vgs_max, vgs_min
+            vgs1 = wv_max.get_crossing(ibias_min_fg * fg)
+            if vgs1 is None:
+                vgs1 = vgs[0] if is_nmos else vgs[-1]
+            vgs2 = wv_min.get_crossing(ibias_max_fg * fg)
+            if vgs2 is None:
+                vgs2 = vgs[-1] if is_nmos else vgs[0]
+
+            if is_nmos:
+                vgs_min, vgs_max = vgs1, vgs2
+            else:
+                vgs_min, vgs_max = vgs2, vgs1
+
             vgs_min = math.floor(vgs_min / vgs_res) * vgs_res
             vgs_max = math.ceil(vgs_max / vgs_res) * vgs_res
 
