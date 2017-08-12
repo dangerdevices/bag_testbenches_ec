@@ -19,7 +19,7 @@ if __name__ == '__main__':
 
     sim = MOSCharSS(bprj, config_file)
 
-    sim.run_lvs_rcx(tb_type='tb_ibias')
+    sim.create_designs(tb_type='tb_ibias')
     # sim.run_simulations('tb_ibias')
     sim.process_ibias_data()
 

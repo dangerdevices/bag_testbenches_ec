@@ -319,6 +319,8 @@ class MOSCharSS(SimulationManager):
         corner_list = log_freq = None
         corner_sort_arg = None  # type: Sequence[int]
         output_dict = {}
+        fstart_log = np.log(fstart)
+        fstop_log = np.log(fstop)
         for val_list in self.get_combinations_iter():
             dsn_name = self.get_instance_name(dsn_name_base, val_list)
             results = self.get_sim_results(tb_type, val_list)
@@ -334,9 +336,7 @@ class MOSCharSS(SimulationManager):
                 log_freq = np.log(results['freq'])
 
             cur_points = [results[name] for name in ss_swp_names]
-
-            fstart_log = log_freq[0] if fstart is None else np.log(fstart)
-            fstop_log = log_freq[-1] if fstop is None else np.log(fstop)
+            cur_points[-1] = log_freq
 
             # rearrange array axis
             sweep_params = results['sweep_params']
@@ -353,20 +353,21 @@ class MOSCharSS(SimulationManager):
         return corner_list, output_dict
 
     def get_ss_info(self,
-                    fstart,  # type: Optional[float]
-                    fstop,  # type: Optional[float]
+                    fstart=None,  # type: Optional[float]
+                    fstop=None,  # type: Optional[float]
                     scale=1.0,  # type: float
                     temp=300,  # type: float
                     ):
         # type: (...) -> Tuple[List[str], List[str], Dict[str, Dict[str, List[LinearInterpolator]]]]
         corner_list, ss_swp_names, tot_dict = self._get_ss_params()
-        _, noise_dict = self._get_integrated_noise(fstart, fstop, scale=scale)
+        if fstart is not None and fstop is not None:
+            _, noise_dict = self._get_integrated_noise(fstart, fstop, scale=scale)
 
-        k = scale * (fstop - fstart) * 4 * scipy.constants.Boltzmann * temp
-        for key, val in tot_dict.items():
-            gm = val['gm']
-            noise_var = noise_dict[key]
-            val['gamma'] = [nf / gmf / k for nf, gmf in zip(noise_var, gm)]
+            k = scale * (fstop - fstart) * 4 * scipy.constants.Boltzmann * temp
+            for key, val in tot_dict.items():
+                gm = val['gm']
+                noise_var = noise_dict[key]
+                val['gamma'] = [nf / gmf / k for nf, gmf in zip(noise_var, gm)]
 
         return corner_list, ss_swp_names, tot_dict
 
