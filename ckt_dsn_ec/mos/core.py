@@ -395,10 +395,10 @@ class MOSDBDiscrete(object):
         list of specification file locations corresponding to widths.
     width_res : Union[float, int]
         width resolution.
-    noise_fstart : float
-        noise integration frequency lower bound.
-    noise_fstop : float
-        noise integration frequency upper bound.
+    noise_fstart : Optional[float]
+        noise integration frequency lower bound.  None to disable noise.
+    noise_fstop : Optional[float]
+        noise integration frequency upper bound.  None to disable noise.
     noise_scale : float
         noise integration scaling factor.
     noise_temp : float
@@ -409,8 +409,8 @@ class MOSDBDiscrete(object):
                  width_list,  # type: List[Union[float, int]]
                  spec_list,  # type: List[str]
                  width_res,  # type: Union[float, int]
-                 noise_fstart,  # type: float
-                 noise_fstop,  # type: float
+                 noise_fstart=None,  # type: Optional[float]
+                 noise_fstop=None,  # type: Optional[float]
                  noise_scale=1.0,  # type: float
                  noise_temp=300,  # type: float
                  ):
