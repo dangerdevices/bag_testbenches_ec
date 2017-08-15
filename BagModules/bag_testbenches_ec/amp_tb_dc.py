@@ -51,6 +51,22 @@ class bag_testbenches_ec__amp_tb_dc(Module):
         for par in self.param_list:
             self.parameters[par] = None
 
+    def _generate_biases(self, bias_dict, name_template, inst_name, param_name):
+        names = sorted(bias_dict.keys())
+        name_list, term_list, val_list = [], [], []
+        for name in names:
+            pname, nname, bias_val = bias_dict[name]
+            term_list.append(dict(PLUS=pname, MINUS=nname))
+            name_list.append(name_template % name)
+            if isinstance(bias_val, str):
+                val_list.append(bias_val)
+            else:
+                val_list.append(float_to_si_string(bias_val))
+
+        self.array_instance(inst_name, name_list, term_list=term_list)
+        for inst, val in zip(self.instances[inst_name], val_list):
+            inst.parameters[param_name] = val
+
     def design(self, dut_lib='', dut_cell='', vbias_dict=None, ibias_dict=None):
         """To be overridden by subclasses to design this module.
 
@@ -80,39 +96,21 @@ class bag_testbenches_ec__amp_tb_dc(Module):
 
         # setup bias voltages
         if vbias_dict:
-            names = sorted(vbias_dict.keys())
-            name_list, term_list, val_list = ['VSUP'], [{}], ['vdd']
-            for name in names:
-                pname, nname, voltage_val = vbias_dict[name]
-                term_list.append(dict(PLUS=pname, MINUS=nname))
-                name_list.append('V%s' % name)
-                if isinstance(voltage_val, str):
-                    val_list.append(voltage_val)
-                else:
-                    val_list.append(float_to_si_string(voltage_val))
+            # make sure VDD is always included
+            name = 'SUP'
+            counter = 1
+            while name in vbias_dict:
+                name = 'SUP%d' % counter
+                counter += 1
 
-            self.array_instance('VSUP', name_list, term_list=term_list)
-            for inst, val in zip(self.instances['VSUP'], val_list):
-                inst.parameters['vdc'] = val
+            vbias_dict[name] = ['VDD', 'VSS', 'vdd']
+            self._generate_biases(vbias_dict, 'V%s', 'VSUP', 'vdc')
 
         # setup bias currents
         if not ibias_dict:
             self.delete_instance('IBIAS')
         else:
-            names = sorted(vbias_dict.keys())
-            name_list, term_list, val_list = [], [], []
-            for name in names:
-                pname, nname, current_val = ibias_dict[name]
-                term_list.append(dict(PLUS=pname, MINUS=nname))
-                name_list.append('I%s' % name)
-                if isinstance(current_val, str):
-                    val_list.append(current_val)
-                else:
-                    val_list.append(float_to_si_string(current_val))
-
-            self.array_instance('IBIAS', name_list, term_list=term_list)
-            for inst, val in zip(self.instances['IBIAS'], val_list):
-                inst.parameters['idc'] = val
+            self._generate_biases(ibias_dict, 'I%s', 'IBIAS', 'idc')
 
         # setup DUT
         self.replace_instance_master('XDUT', dut_lib, dut_cell, static=True)

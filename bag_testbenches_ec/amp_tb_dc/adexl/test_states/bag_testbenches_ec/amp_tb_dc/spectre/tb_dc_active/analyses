@@ -1,6 +1,6 @@
 analysis(dc fields center) ""
 analysis(dc fields dec) ""
-analysis(dc fields designVar) "vout"
+analysis(dc fields designVar) "voutref"
 analysis(dc fields dev) ""
 analysis(dc fields deviceParam) ""
 analysis(dc fields enable) (t)
@@ -10,7 +10,7 @@ analysis(dc fields lin) "VAR(\"vout_num\")"
 analysis(dc fields log) ""
 analysis(dc fields mod) ""
 analysis(dc fields modelParam) ""
-analysis(dc fields param) "vout"
+analysis(dc fields param) "voutref"
 analysis(dc fields rangeType) "Start-Stop"
 analysis(dc fields saveOppoint) t
 analysis(dc fields span) ""

@@ -71,12 +71,6 @@
 					<dependentTest enabled="1">tb_dc</dependentTest>
 				</dependentTests>
 			</var>
-			<var>vout
-				<value>0.5</value>
-				<dependentTests>
-					<dependentTest enabled="1">tb_dc</dependentTest>
-				</dependentTests>
-			</var>
 			<var>vout_start
 				<value>0.1</value>
 				<dependentTests>
@@ -93,6 +87,12 @@
 				<value>100</value>
 				<dependentTests>
 					<dependentTest enabled="1">tb_dc</dependentTest>
+				</dependentTests>
+			</var>
+			<var>voutref
+				<value>0.5</value>
+				<dependentTests>
+					<dependentTest omitted="0">tb_dc</dependentTest>
 				</dependentTests>
 			</var>
 		</vars>
