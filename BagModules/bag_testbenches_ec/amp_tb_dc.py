@@ -44,7 +44,7 @@ class bag_testbenches_ec__amp_tb_dc(Module):
     Fill in high level description here.
     """
 
-    param_list = ['dut_lib', 'dut_cell', 'vbias_dict', 'ibias_dict']
+    param_list = ['dut_lib', 'dut_cell', 'dut_conns', 'vbias_dict', 'ibias_dict']
 
     def __init__(self, bag_config, parent=None, prj=None, **kwargs):
         Module.__init__(self, bag_config, yaml_file, parent=parent, prj=prj, **kwargs)
@@ -67,7 +67,7 @@ class bag_testbenches_ec__amp_tb_dc(Module):
         for inst, val in zip(self.instances[inst_name], val_list):
             inst.parameters[param_name] = val
 
-    def design(self, dut_lib='', dut_cell='', vbias_dict=None, ibias_dict=None):
+    def design(self, dut_lib='', dut_cell='', dut_conns=None, vbias_dict=None, ibias_dict=None):
         """To be overridden by subclasses to design this module.
 
         This method should fill in values for all parameters in
@@ -87,6 +87,8 @@ class bag_testbenches_ec__amp_tb_dc(Module):
             vbias_dict = {}
         if ibias_dict is None:
             ibias_dict = {}
+        if dut_conns is None:
+            dut_conns = {}
 
         local_dict = locals()
         for name in self.param_list:
@@ -114,6 +116,8 @@ class bag_testbenches_ec__amp_tb_dc(Module):
 
         # setup DUT
         self.replace_instance_master('XDUT', dut_lib, dut_cell, static=True)
+        for term_name, net_name in dut_conns.items():
+            self.reconnect_instance_terminal('XDUT', term_name, net_name)
 
     def get_layout_params(self, **kwargs):
         """Returns a dictionary with layout parameters.
