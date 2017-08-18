@@ -95,6 +95,18 @@
 					<dependentTest omitted="0">tb_dc</dependentTest>
 				</dependentTests>
 			</var>
+			<var>vimax
+				<value>0</value>
+				<dependentTests>
+					<dependentTest omitted="0">tb_dc</dependentTest>
+				</dependentTests>
+			</var>
+			<var>vimin
+				<value>1</value>
+				<dependentTests>
+					<dependentTest omitted="0">tb_dc</dependentTest>
+				</dependentTests>
+			</var>
 		</vars>
 	</active>
 	<history>History</history>
