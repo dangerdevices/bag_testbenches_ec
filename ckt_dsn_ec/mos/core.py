@@ -64,11 +64,6 @@ class MOSCharSS(SimulationManager):
         # type: (Optional[BagProject], str) -> None
         super(MOSCharSS, self).__init__(prj, spec_file)
 
-    @classmethod
-    def get_ss_output_names(cls):
-        # type: () -> List[str]
-        return ['ibias', 'gm', 'gds', 'gb', 'cgd', 'cgs', 'cds', 'cgb', 'cdb', 'csb', 'gamma']
-
     def get_sch_lay_params(self, val_list):
         # type: (Tuple[Any, ...]) -> Tuple[Dict[str, Any], Dict[str, Any]]
         sch_params = self.specs['sch_params'].copy()
@@ -428,6 +423,7 @@ class MOSDBDiscrete(object):
         self._ss_swp_names = None
         self._sim_list = []
         self._ss_list = []
+        self._ss_outputs = None
         for spec in spec_list:
             sim = MOSCharSS(None, spec)
             # error checking
@@ -439,6 +435,8 @@ class MOSDBDiscrete(object):
             if self._sim_envs is None:
                 self._ss_swp_names = ss_swp_names
                 self._sim_envs = corners
+                test_dict = next(iter(ss_dict.values()))
+                self._ss_outputs = sorted(test_dict.keys())
             elif self._sim_envs != corners:
                 raise ValueError('Simulation environments mismatch between given specs.')
             elif self._ss_swp_names != ss_swp_names:
@@ -610,7 +608,7 @@ class MOSDBDiscrete(object):
         """
         fun_arg = self.get_fun_arg(**kwargs)
 
-        results = {name: self.get_function(name, **kwargs)(fun_arg) for name in MOSCharSS.get_ss_output_names()}
+        results = {name: self.get_function(name, **kwargs)(fun_arg) for name in self._ss_outputs}
 
         for key in self._ss_swp_names:
             results[key] = kwargs[key]

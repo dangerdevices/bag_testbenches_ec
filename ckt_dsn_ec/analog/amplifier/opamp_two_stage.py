@@ -344,7 +344,7 @@ class OpAmpTwoStage(object):
         # find gain, unity gain bandwidth, and phase margin across corners
         gain_list, bw_list, pm_list = [], [], []
         for gm1, gm2, r1, r2, c1, c2 in zip(gm1_list, gm2_list, r1_list, r2_list, c1_list, c2_list):
-            cir = self._make_circuit(gm1, gm2, r1, r2, c1, c2, rz_worst)
+            cir = self._make_circuit(gm1, gm2, r1, r2, c1, c2, rz_nom)
             cir.add_cap(cf_min, 'vm', 'vo')
             num, den = cir.get_num_den('vi', 'vo')
             pn = np.poly1d(num)

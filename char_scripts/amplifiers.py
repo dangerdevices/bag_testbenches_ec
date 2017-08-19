@@ -264,6 +264,8 @@ def process_tb_dc(tb_results):
             ax1.plot(cur_vin, cur_vout)
             ax2.plot(cur_vin, vout_diff_fun(cur_vin))
 
+        print(label, 'gain=%.4g' % vout_diff_fun([0]))
+
     if len(result_list) > 1:
         ax1.legend()
         ax2.legend()
