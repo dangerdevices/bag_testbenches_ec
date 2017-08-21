@@ -55,8 +55,8 @@ class TailStage1(object):
                 vg_max = vgs_max + vb
 
                 # find vgs for each corner
-                vgs_list, gds1_list, gds2_list,  = self._solve_vgs(itarg_list, vout_amp_list, vd_list, ib, gds, seg,
-                                                                   vb, vg_min, vg_max)
+                vgs_list, gds1_list, gds2_list = self._solve_vgs(itarg_list, vout_amp_list, vd_list, ib, gds, seg,
+                                                                 vb, vg_min, vg_max)
                 if vgs_list is not None:
                     cur_score = max(gds2_list)
                     if self._best_op is None or cur_score < best_score:
@@ -81,8 +81,8 @@ class TailStage1(object):
             arg1 = self._db.get_fun_arg(vbs=vb - vd, vds=vd - vb, vgs=vgs_opt)
             arg2 = self._db.get_fun_arg(vbs=vb - vd, vds=vout - vb, vgs=vgs_opt)
             vgs_list.append(vgs_opt)
-            gds1_list.append(float(gdsf(arg1)))
-            gds2_list.append(float(gdsf(arg2)))
+            gds1_list.append(seg * float(gdsf(arg1)))
+            gds2_list.append(seg * float(gdsf(arg2)))
 
         return vgs_list, gds1_list, gds2_list
 
