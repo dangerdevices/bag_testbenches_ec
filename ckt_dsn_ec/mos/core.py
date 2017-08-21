@@ -289,7 +289,7 @@ class MOSCharSS(SimulationManager):
                 fun_list = []
                 for idx in corner_sort_arg:
                     fun_list.append(interpolate_grid(cur_scales, new_data[idx, ...], method=method,
-                                                     extrapolate=True, delta=1e-5, num_extrapolate=3))
+                                                     extrapolate=True, delta=1e-5))
                 ss_dict[key] = fun_list
 
             # derived ss parameters
