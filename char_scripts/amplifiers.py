@@ -6,6 +6,7 @@ from itertools import product
 
 import numpy as np
 import scipy.interpolate as interp
+import scipy.optimize as sciopt
 import matplotlib.pyplot as plt
 
 from bag import BagProject
@@ -237,17 +238,11 @@ def split_data_by_sweep(results, var_list):
     return ans_list
 
 
-def process_tb_dc(tb_results):
+def process_tb_dc(tb_results, plot=True):
     result_list = split_data_by_sweep(tb_results, ['vin', 'vout'])
 
-    f, (ax1, ax2) = plt.subplots(2, sharex='all')
-    ax1.set_title('Vout vs Vin')
-    ax1.set_ylabel('Vout (V)')
-    ax2.set_title('Gain vs Vin')
-    ax2.set_ylabel('Gain (V/V)')
-    ax2.set_xlabel('Vin (V)')
+    plot_data_list = []
     for label, res_dict in result_list:
-
         cur_vin = res_dict['vin']
         cur_vout = res_dict['vout']
 
@@ -257,79 +252,114 @@ def process_tb_dc(tb_results):
         vout_fun = interp.InterpolatedUnivariateSpline(cur_vin, cur_vout)
         vout_diff_fun = vout_fun.derivative(1)
 
-        if label:
-            ax1.plot(cur_vin, cur_vout, label=label)
-            ax2.plot(cur_vin, vout_diff_fun(cur_vin), label=label)
-        else:
-            ax1.plot(cur_vin, cur_vout)
-            ax2.plot(cur_vin, vout_diff_fun(cur_vin))
+        print('%s, gain=%.4g' % (label, vout_diff_fun([0])))
+        plot_data_list.append((label, cur_vin, cur_vout, vout_diff_fun(cur_vin)))
 
-        print(label, 'gain=%.4g' % vout_diff_fun([0]))
+    if plot:
+        f, (ax1, ax2) = plt.subplots(2, sharex='all')
+        ax1.set_title('Vout vs Vin')
+        ax1.set_ylabel('Vout (V)')
+        ax2.set_title('Gain vs Vin')
+        ax2.set_ylabel('Gain (V/V)')
+        ax2.set_xlabel('Vin (V)')
 
-    if len(result_list) > 1:
-        ax1.legend()
-        ax2.legend()
+        for label, vin, vout, vdiff in plot_data_list:
+            if label:
+                ax1.plot(cur_vin, cur_vout, label=label)
+                ax2.plot(cur_vin, vout_diff_fun(cur_vin), label=label)
+            else:
+                ax1.plot(cur_vin, cur_vout)
+                ax2.plot(cur_vin, vout_diff_fun(cur_vin))
+
+        if len(result_list) > 1:
+            ax1.legend()
+            ax2.legend()
 
 
-def process_tb_ac(tb_results):
+def process_tb_ac(tb_results, plot=True):
     result_list = split_data_by_sweep(tb_results, ['vout_ac'])
 
     freq = tb_results['freq']
-    f, (ax1, ax2) = plt.subplots(2, sharex='all')
-    ax1.set_title('Magnitude vs Frequency')
-    ax1.set_ylabel('Magnitude (dB)')
-    ax2.set_title('Phase vs Frequency')
-    ax2.set_ylabel('Phase (Degrees)')
-    ax2.set_xlabel('Frequency (Hz)')
+    log_freq = np.log10(freq)
+    plot_data_list = []
     for label, res_dict in result_list:
-
         cur_vout = res_dict['vout_ac']
-        cur_mag = 20 * np.log10(np.abs(cur_vout))
+        cur_mag = 20 * np.log10(np.abs(cur_vout))  # type: np.ndarray
         cur_ang = np.angle(cur_vout, deg=True)
 
-        if label:
-            ax1.semilogx(freq, cur_mag, label=label)
-            ax2.semilogx(freq, cur_ang, label=label)
-        else:
-            ax1.semilogx(freq, cur_mag)
-            ax2.semilogx(freq, cur_ang)
+        # interpolate log-log plot
+        mag_fun = interp.InterpolatedUnivariateSpline(log_freq, cur_mag)
+        ang_fun = interp.InterpolatedUnivariateSpline(log_freq, cur_ang)
+        # find 3db and unity gain frequency
+        dc_gain = cur_mag[0]
+        lf0 = log_freq[0]
+        lf1 = log_freq[-1]
+        lf_3db = sciopt.brentq(lambda x: mag_fun(x) - (dc_gain - 3), lf0, lf1)  # type: float
+        # noinspection PyTypeChecker
+        lf_unity = sciopt.brentq(mag_fun, lf0, lf1)  # type: float
 
-    if len(result_list) > 1:
-        ax1.legend()
-        ax2.legend()
+        # find phase margin
+        pm = 180 + ang_fun(lf_unity)
+
+        print('%s, f_3db=%.4g, f_unity=%.4g, phase_margin=%.4g' % (label, 10.0**lf_3db, 10.0**lf_unity, pm))
+        plot_data_list.append((label, cur_mag, cur_ang))
+
+    if plot:
+        f, (ax1, ax2) = plt.subplots(2, sharex='all')
+        ax1.set_title('Magnitude vs Frequency')
+        ax1.set_ylabel('Magnitude (dB)')
+        ax2.set_title('Phase vs Frequency')
+        ax2.set_ylabel('Phase (Degrees)')
+        ax2.set_xlabel('Frequency (Hz)')
+
+        for label, cur_mag, cur_ang in plot_data_list:
+            if label:
+                ax1.semilogx(freq, cur_mag, label=label)
+                ax2.semilogx(freq, cur_ang, label=label)
+            else:
+                ax1.semilogx(freq, cur_mag)
+                ax2.semilogx(freq, cur_ang)
+
+        if len(result_list) > 1:
+            ax1.legend()
+            ax2.legend()
 
 
-def process_tb_tran(tb_results):
+def process_tb_tran(tb_results, plot=True):
     result_list = split_data_by_sweep(tb_results, ['vout_tran'])
 
     tvec = tb_results['time']
-    plt.figure()
-    plt.title('Vout vs Time')
-    plt.ylabel('Vout (V)')
-    plt.xlabel('Time (s)')
+    plot_data_list = []
     for label, res_dict in result_list:
-
         cur_vout = res_dict['vout_tran']
 
-        if label:
-            plt.plot(tvec, cur_vout, label=label)
-        else:
-            plt.plot(tvec, cur_vout)
+        plot_data_list.append((label, cur_vout))
 
-    if len(result_list) > 1:
-        plt.legend()
+    if plot:
+        plt.figure()
+        plt.title('Vout vs Time')
+        plt.ylabel('Vout (V)')
+        plt.xlabel('Time (s)')
+
+        for label, cur_vout in plot_data_list:
+            if label:
+                plt.plot(tvec, cur_vout, label=label)
+            else:
+                plt.plot(tvec, cur_vout)
+
+        if len(result_list) > 1:
+            plt.legend()
 
 
-def plot_data(results_dict):
-    process_tb_dc(results_dict['tb_dc'])
-    process_tb_ac(results_dict['tb_ac_tran'])
-    process_tb_tran(results_dict['tb_ac_tran'])
+def plot_data(results_dict, plot=True):
+    process_tb_dc(results_dict['tb_dc'], plot=plot)
+    process_tb_ac(results_dict['tb_ac_tran'], plot=plot)
+    process_tb_tran(results_dict['tb_ac_tran'], plot=plot)
 
     plt.show()
 
 
-def run_flow(prj, specs, dsn_name, gen_sch=True, run_rcx=True, run_sim=True):
-
+def run_flow(prj, specs, dsn_name, gen_sch=True, run_rcx=True, run_sim=True, plot=True):
     if gen_sch:
         # generate layout, get schematic parameters from layout
         dsn_sch_params = gen_layout(prj, specs, dsn_name)
@@ -343,7 +373,7 @@ def run_flow(prj, specs, dsn_name, gen_sch=True, run_rcx=True, run_sim=True):
     # load simulation results from save file
     res_dict = load_sim_data(specs, dsn_name)
     # post-process simulation results
-    plot_data(res_dict)
+    plot_data(res_dict, plot=plot)
 
 
 if __name__ == '__main__':
@@ -361,4 +391,4 @@ if __name__ == '__main__':
         print('creating BagProject')
         bprj = BagProject()
 
-    run_flow(bprj, top_specs, 'opamp_two_stage', gen_sch=False, run_rcx=False, run_sim=False)
+    run_flow(bprj, top_specs, 'opamp_two_stage', gen_sch=True, run_rcx=False, run_sim=True, plot=False)

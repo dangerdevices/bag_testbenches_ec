@@ -8,7 +8,7 @@ import numpy as np
 import scipy.optimize as sciopt
 
 from bag.math import gcd
-from bag.data.lti import LTICircuit, get_stability_margins, get_w_crossings
+from bag.data.lti import LTICircuit, get_stability_margins, get_w_crossings, get_w_3db
 from bag.util.search import FloatBinaryIterator, BinaryIterator
 
 from ckt_dsn_ec.mos.core import MOSDBDiscrete
@@ -131,6 +131,7 @@ class OpAmpTwoStage(object):
                itarg_list,  # type: List[float]
                vg_list,  # type: List[float]
                vout_list,  # type: List[float]
+               cpar1,  # type: float
                cload,  # type: float
                f_unit,  # type: float
                phase_margin,  # type: float
@@ -202,7 +203,7 @@ class OpAmpTwoStage(object):
         gds2_list = [gds_t2 + gds_i2 for gds_t2, gds_i2 in zip(gds_tail2_list, gds_in2_list)]
         c2_list = [cdd_t2 + cdd_i2 for cdd_t2, cdd_i2 in zip(cdd_tail2_list, cdd_in2_list)]
         stage2_results = self.design_stage2(gm1_list, gm2_list, gds1_list, gds2_list, c1_list, c2_list, cgg_in2_list,
-                                            cload, res_var, phase_margin, f_unit, seg_gm, seg_diode, seg_ngm)
+                                            cpar1, cload, res_var, phase_margin, f_unit, seg_gm, seg_diode, seg_ngm)
 
         sch_info = dict(
             w_dict={'load': load_info['w'], 'in': gm_info['w'], 'tail': tail1_info['w']},
@@ -238,7 +239,8 @@ class OpAmpTwoStage(object):
             rz=stage2_results['rz'],
             cf=stage2_results['cf'],
             gain_tot=stage2_results['gain'],
-            f_unit=stage2_results['f_unit'],
+            f_3db=stage2_results['f_3db'],
+            f_unity=stage2_results['f_unity'],
             phase_margin=stage2_results['phase_margin'],
 
             sch_info=sch_info,
@@ -249,7 +251,7 @@ class OpAmpTwoStage(object):
         return self._amp_info
 
     def design_stage2(self, gm1_list, gm2_list, gds1_list, gds2_list, c1_list, c2_list, cg2_list,
-                      cload, res_var, phase_margin, f_unit, seg_tail, seg_diode, seg_ngm):
+                      cpar1, cload, res_var, phase_margin, f_unit, seg_tail, seg_diode, seg_ngm):
         # step 1: find stage 2 unit size
         seg_gcd = gcd(gcd(seg_tail, seg_diode), seg_ngm)
         if seg_gcd % 2 != 0:
@@ -268,11 +270,12 @@ class OpAmpTwoStage(object):
                                                                                          c2_list, cg2_list,
                                                                                          cload, seg_gcd, cur_size)
 
-            cur_c1_list = [c1_tmp + cg2_tmp for c1_tmp, cg2_tmp in zip(c1_list, cur_cg2_list)]
-            rz, cf, gain_list, bw_list, pm_list = self._find_rz_cf(gm1_list, cur_gm2_list, gds1_list, cur_gds2_list,
-                                                                   cur_c1_list, cur_c2_list, res_var, phase_margin)
+            cur_c1_list = [cpar1 + c1_tmp + cg2_tmp for c1_tmp, cg2_tmp in zip(c1_list, cur_cg2_list)]
+            rz, cf, gain_list, f3db_list, funity_list, pm_list = self._find_rz_cf(gm1_list, cur_gm2_list, gds1_list,
+                                                                                  cur_gds2_list, cur_c1_list,
+                                                                                  cur_c2_list, res_var, phase_margin)
 
-            if min(bw_list) > f_unit:
+            if min(funity_list) > f_unit:
                 seg_tail2_tot = seg_tail // seg_gcd * cur_size
                 seg_tail2 = (seg_tail2_tot // 4) * 2
                 seg_tailcm = seg_tail2_tot - seg_tail2
@@ -281,7 +284,8 @@ class OpAmpTwoStage(object):
                 results['rz'] = rz
                 results['cf'] = cf
                 results['gain'] = gain_list
-                results['f_unit'] = bw_list
+                results['f_3db'] = f3db_list
+                results['f_unity'] = funity_list
                 results['phase_margin'] = pm_list
                 results['gm2'] = cur_gm2_list
                 results['gds2'] = cur_gds2_list
@@ -338,7 +342,7 @@ class OpAmpTwoStage(object):
             cf_min = bin_iter.get_last_save()
 
         # find gain, unity gain bandwidth, and phase margin across corners
-        gain_list, bw_list, pm_list = [], [], []
+        gain_list, f3db_list, funity_list, pm_list = [], [], [], []
         for gm1, gm2, gds1, gds2, c1, c2 in zip(gm1_list, gm2_list, gds1_list, gds2_list, c1_list, c2_list):
             cir = self._make_circuit(gm1, gm2, gds1, gds2, c1, c2, rz_nom)
             cir.add_cap(cf_min, 'vm', 'vo')
@@ -346,10 +350,11 @@ class OpAmpTwoStage(object):
             pn = np.poly1d(num)
             pd = np.poly1d(den)
             gain_list.append(abs(pn(0) / pd(0)))
-            bw_list.append(get_w_crossings(num, den)[0] / 2 / np.pi)
+            f3db_list.append(get_w_3db(num, den) / 2 / np.pi)
+            funity_list.append(get_w_crossings(num, den)[0] / 2 / np.pi)
             pm_list.append(get_stability_margins(num, den)[0])
 
-        return rz_nom, cf_min, gain_list, bw_list, pm_list
+        return rz_nom, cf_min, gain_list, f3db_list, funity_list, pm_list
 
     @classmethod
     def _make_circuit(cls, gm1, gm2, gds1, gds2, c1, c2, rz):
