@@ -17,7 +17,7 @@ from bag.data import Waveform
 from bag.data.mos import mos_y_to_ss
 from bag.tech.core import SimulationManager
 from bag.math.dfun import VectorDiffFunction, DiffFunction
-from bag.math.interpolate import LinearInterpolator
+from bag.math.interpolate import LinearInterpolator, interpolate_grid
 
 
 class MOSCharSS(SimulationManager):
@@ -244,7 +244,7 @@ class MOSCharSS(SimulationManager):
             with open_file(vgs_file, 'w') as f:
                 yaml.dump(ans, f)
 
-    def _get_ss_params(self):
+    def _get_ss_params(self, method='linear'):
         # type: () -> Tuple[List[str], List[str], Dict[str, Dict[str, List[LinearInterpolator]]]]
         tb_type = 'tb_sp'
         tb_specs = self.specs[tb_type]
@@ -256,7 +256,7 @@ class MOSCharSS(SimulationManager):
 
         axis_names = ['corner', 'vbs', 'vds', 'vgs']
         ss_swp_names = None  # type: List[str]
-        delta_list = corner_list = None
+        corner_list = None
         corner_sort_arg = None  # type: Sequence[int]
         total_dict = {}
         for val_list in self.get_combinations_iter():
@@ -269,12 +269,14 @@ class MOSCharSS(SimulationManager):
 
             if corner_list is None:
                 ss_swp_names = [name for name in axis_names[1:] if name in results]
-                delta_list = [1e-6] * len(ss_swp_names)
                 corner_list = results['corner']
                 corner_sort_arg = np.argsort(corner_list)  # type: Sequence[int]
                 corner_list = corner_list[corner_sort_arg].tolist()
 
-            cur_points = [results[name] for name in ss_swp_names]
+            cur_scales = []
+            for name in ss_swp_names:
+                cur_xvec = results[name]
+                cur_scales.append((cur_xvec[0], cur_xvec[1] - cur_xvec[0]))
 
             # rearrange array axis
             sweep_params = results['sweep_params']
@@ -286,7 +288,8 @@ class MOSCharSS(SimulationManager):
                 new_data = np.transpose(ss_dict[key], axes=order)
                 fun_list = []
                 for idx in corner_sort_arg:
-                    fun_list.append(LinearInterpolator(cur_points, new_data[idx, ...], delta_list, extrapolate=True))
+                    fun_list.append(interpolate_grid(cur_scales, new_data[idx, ...], method=method,
+                                                     extrapolate=True, delta=1e-5, num_extrapolate=3))
                 ss_dict[key] = fun_list
 
             # derived ss parameters
@@ -361,9 +364,10 @@ class MOSCharSS(SimulationManager):
                     fstop=None,  # type: Optional[float]
                     scale=1.0,  # type: float
                     temp=300,  # type: float
+                    method='linear',  # type: str
                     ):
         # type: (...) -> Tuple[List[str], List[str], Dict[str, Dict[str, List[LinearInterpolator]]]]
-        corner_list, ss_swp_names, tot_dict = self._get_ss_params()
+        corner_list, ss_swp_names, tot_dict = self._get_ss_params(method=method)
         if fstart is not None and fstop is not None:
             _, noise_dict = self._get_integrated_noise(fstart, fstop, scale=scale)
 
@@ -398,6 +402,8 @@ class MOSDBDiscrete(object):
         noise integration scaling factor.
     noise_temp : float
         noise temperature.
+    method : str
+        interpolation method.
     """
 
     def __init__(self,
@@ -408,6 +414,7 @@ class MOSDBDiscrete(object):
                  noise_fstop=None,  # type: Optional[float]
                  noise_scale=1.0,  # type: float
                  noise_temp=300,  # type: float
+                 method='linear',  # type: str
                  ):
         # type: (...) -> None
         # error checking
@@ -431,7 +438,8 @@ class MOSDBDiscrete(object):
                 raise ValueError('MOSDBDiscrete assumes transistor width is not swept.')
 
             corners, ss_swp_names, ss_dict = sim.get_ss_info(noise_fstart, noise_fstop,
-                                                             scale=noise_scale, temp=noise_temp)
+                                                             scale=noise_scale, temp=noise_temp,
+                                                             method=method)
             if self._sim_envs is None:
                 self._ss_swp_names = ss_swp_names
                 self._sim_envs = corners
