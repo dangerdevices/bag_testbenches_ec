@@ -55,17 +55,17 @@ class TailStage1(object):
                 vg_max = vgs_max + vb
 
                 # find vgs for each corner
-                vg_list, ro1_list, ro2_list = self._solve_vgs(itarg_list, vd_list, vout_amp_list, ib, gds, seg,
-                                                              vb, vg_min, vg_max)
-                if vg_list is not None:
-                    cur_score = min(ro2_list)
-                    if self._best_op is None or cur_score > best_score:
+                vgs_list, gds1_list, gds2_list,  = self._solve_vgs(itarg_list, vout_amp_list, vd_list, ib, gds, seg,
+                                                                   vb, vg_min, vg_max)
+                if vgs_list is not None:
+                    cur_score = max(gds2_list)
+                    if self._best_op is None or cur_score < best_score:
                         best_score = cur_score
-                        self._best_op = (w, intent, seg, stack, vb, vg_list, vout_amp_list, ro1_list, ro2_list)
+                        self._best_op = (w, intent, seg, stack, vb, vgs_list, vout_amp_list, gds1_list, gds2_list)
 
-    def _solve_vgs(self, itarg_list, vd_list, vout_amp_list, ib_list, gds_list, seg, vb, vg_min, vg_max):
-        vg_list, ro1_list, ro2_list = [], [], []
-        for itarg, vd, vo2, ibf, gdsf in zip(itarg_list, vd_list, vout_amp_list, ib_list, gds_list):
+    def _solve_vgs(self, itarg_list, vout_list, vd_list, ib_list, gds_list, seg, vb, vg_min, vg_max):
+        vgs_list, gds1_list, gds2_list = [], [], []
+        for itarg, vout, vd, ibf, gdsf in zip(itarg_list, vout_list, vd_list, ib_list, gds_list):
 
             def zero_fun(vg):
                 farg = self._db.get_fun_arg(vbs=vb - vd, vds=vd - vb, vgs=vg - vb)
@@ -77,38 +77,36 @@ class TailStage1(object):
                 return None, None, None
 
             vg_sol = sciopt.brentq(zero_fun, vg_min, vg_max)  # type: float
-            arg1 = self._db.get_fun_arg(vbs=vb - vd, vds=vd - vb, vgs=vg_sol - vb)
-            ro1 = 1 / float(gdsf(arg1))
-            arg2 = self._db.get_fun_arg(vbs=vb - vd, vds=vo2 - vb, vgs=vg_sol - vb)
-            ro2 = 1 / float(gdsf(arg2))
-            vg_list.append(vg_sol)
-            ro1_list.append(ro1)
-            ro2_list.append(ro2)
+            vgs_opt = vg_sol - vb
+            arg1 = self._db.get_fun_arg(vbs=vb - vd, vds=vd - vb, vgs=vgs_opt)
+            arg2 = self._db.get_fun_arg(vbs=vb - vd, vds=vout - vb, vgs=vgs_opt)
+            vgs_list.append(vgs_opt)
+            gds1_list.append(float(gdsf(arg1)))
+            gds2_list.append(float(gdsf(arg2)))
 
-        return vg_list, ro1_list, ro2_list
+        return vgs_list, gds1_list, gds2_list
 
     def get_dsn_info(self):
         # type: () -> Optional[Dict[str, Any]]
         if self._best_op is None:
             return None
 
-        w, intent, seg, stack, vb, vg_list, vout_list, ro1_list, ro2_list = self._best_op
+        w, intent, seg, stack, vb, vgs_list, vout_list, gds1_list, gds2_list = self._best_op
         self._db.set_dsn_params(w=w, intent=intent, stack=stack)
         cdd = self._db.get_function_list('cdd')
-        cdd_list = []
-        for vg, vout, cddf in zip(vg_list, vout_list, cdd):
-            arg = self._db.get_fun_arg(vbs=0, vds=vout - vb, vgs=vg - vb)
+        cdd2_list = []
+        for vgs, vout, cddf in zip(vgs_list, vout_list, cdd):
+            arg = self._db.get_fun_arg(vbs=0, vds=vout - vb, vgs=vgs)
             cur_cdd = cddf(arg)  # type: float
-            cur_cdd = seg * float(cur_cdd)
-            cdd_list.append(cur_cdd)
+            cdd2_list.append(seg * float(cur_cdd))
 
         return dict(
             w=w,
             intent=intent,
-            vg=vg_list,
-            ro1=ro1_list,
-            ro2=ro2_list,
-            cdd=cdd_list,
+            vgs=vgs_list,
+            gds1=gds1_list,
+            gds2=gds2_list,
+            cdd2=cdd2_list,
         )
 
 
@@ -150,55 +148,60 @@ class OpAmpTwoStage(object):
             load = LoadDiodePFB(self._nch_db)
             gm = InputGm(self._pch_db)
             tail1 = TailStage1(self._pch_db)
+            vds2_list = vout_list
         else:
             load = LoadDiodePFB(self._pch_db)
             gm = InputGm(self._nch_db)
             tail1 = TailStage1(self._nch_db)
+            vds2_list = [vo - vdd for vo in vout_list]
 
         # design load
-        load.design(itarg_list, vstar_load_min, l)
+        load.design(itarg_list, vds2_list, vstar_load_min, l)
         load_info = load.get_dsn_info()
-        gm2_list = load_info['gm']
-        gds2_list = load_info['gds']
-        ro_load_list = load_info['ro']
-        cgg_load_list = load_info['cgg']
-        cdd_load_list = load_info['cdd']
+        vgs_load_list = load_info['vgs']
+        gds_load_list = load_info['gds1']
+        ctot_load_list = load_info['ctot1']
+        gm2_list = load_info['gm2']
+        gds_in2_list = load_info['gds2']
+        cgg_in2_list = load_info['cgg2']
+        cdd_in2_list = load_info['cdd2']
         stack_diode = load_info['stack_diode']
         stack_ngm = load_info['stack_ngm']
         seg_diode = load_info['seg_diode']
         seg_ngm = load_info['seg_ngm']
         if pmos_input:
-            vd_list = load_info['vgs']
+            vd_list = vgs_load_list
             vb = vdd
         else:
-            vd_list = [vdd - vgs for vgs in load_info['vgs']]
+            vd_list = [vdd - vgs for vgs in vgs_load_list]
             vb = 0
 
         # design input gm
-        gm.design(itarg_list, vg_list, vd_list, ro_load_list, vb, vstar_gm_min, vds_tail_min, l,
+        gm.design(itarg_list, vg_list, vd_list, gds_load_list, vb, vstar_gm_min, vds_tail_min, l,
                   seg_min=seg_gm_min, stack_list=[stack_ngm])
         gm_info = gm.get_dsn_info()
         gm1_list = gm_info['gm']
-        cdd_gm_list = gm_info['cdd']
-        ro_gm_list = gm_info['ro']
+        cdd_in_list = gm_info['cdd']
+        gds_in_list = gm_info['gds']
         vtail_list = gm_info['vs']
         seg_gm = gm_info['seg']
         stack_gm = gm_info['stack']
 
-        ro1_list = [1 / (1 / ro_gm + 1 / ro_load) for ro_gm, ro_load in zip(ro_gm_list, ro_load_list)]
-        gain1_list = [gm1 * ro1 for gm1, ro1 in zip(gm1_list, ro1_list)]
-        c1_list = [cd_l + cd_g for cd_l, cd_g in zip(cgg_load_list, cdd_gm_list)]
+        gds1_list = [gds_in + gds_load for gds_in, gds_load in zip(gds_in_list, gds_load_list)]
+        gain1_list = [gm1 / gds1 for gm1, gds1 in zip(gm1_list, gds1_list)]
+        c1_list = [ctot_l + cd_i for ctot_l, cd_i in zip(ctot_load_list, cdd_in_list)]
 
         # design stage 1 tail
         tail1.design(itarg_list, vtail_list, vout_list, vb, l, seg_gm, stack_gm)
         tail1_info = tail1.get_dsn_info()
-        rn2_list = tail1_info['ro2']
-        cdd_tail_list = tail1_info['cdd']
+        gds_tail2_list = tail1_info['gds2']
+        cdd_tail2_list = tail1_info['cdd2']
+        vbias_list = [vgs_tail + vb for vgs_tail in tail1_info['vgs']]
 
         # design stage 2 gm
-        ro2_list = [1/(gds_l + 1 / ro_t) for gds_l, ro_t in zip(gds2_list, rn2_list)]
-        c2_list = [cd_l + cd_t for cd_l, cd_t in zip(cdd_load_list, cdd_tail_list)]
-        stage2_results = self.design_stage2(gm1_list, gm2_list, ro1_list, ro2_list, c1_list, c2_list,
+        gds2_list = [gds_t2 + gds_i2 for gds_t2, gds_i2 in zip(gds_tail2_list, gds_in2_list)]
+        c2_list = [cdd_t2 + cdd_i2 for cdd_t2, cdd_i2 in zip(cdd_tail2_list, cdd_in2_list)]
+        stage2_results = self.design_stage2(gm1_list, gm2_list, gds1_list, gds2_list, c1_list, c2_list, cgg_in2_list,
                                             cload, res_var, phase_margin, f_unit, seg_gm, seg_diode, seg_ngm)
 
         sch_info = dict(
@@ -220,17 +223,16 @@ class OpAmpTwoStage(object):
         self._amp_info = dict(
             vtail=vtail_list,
             vmid=vd_list,
-            vbias=tail1_info['vg'],
+            vbias=vbias_list,
 
             vstar=gm_info['vstar'],
             cin=gm_info['cgg'],
             gm1=gm1_list,
-            ro1=ro1_list,
-            rt1=tail1_info['ro1'],
+            gds1=gds1_list,
             gain1=gain1_list,
-            c1=c1_list,
+            c1=stage2_results['c1'],
             gm2=stage2_results['gm2'],
-            ro2=stage2_results['ro2'],
+            gds2=stage2_results['gds2'],
             c2=stage2_results['c2'],
 
             rz=stage2_results['rz'],
@@ -246,39 +248,32 @@ class OpAmpTwoStage(object):
         # type: () -> Optional[Dict[str, Any]]
         return self._amp_info
 
-    @classmethod
-    def _get_stage2_ss(cls, gm2_list, ro2_list, c2_list, cload, f, cur_size):
-        cur_gm2_list, cur_ro2_list, cur_c2_list = [], [], []
-        for gm2, ro2, c2 in zip(gm2_list, ro2_list, c2_list):
-            cur_gm2_list.append(gm2 * cur_size / f)
-            cur_ro2_list.append(ro2 * f / cur_size)
-            cur_c2_list.append(cload + c2 * cur_size / f)
-
-        return cur_gm2_list, cur_ro2_list, cur_c2_list
-
-    def design_stage2(self, gm1_list, gm2_list, ro1_list, ro2_list, c1_list, c2_list,
+    def design_stage2(self, gm1_list, gm2_list, gds1_list, gds2_list, c1_list, c2_list, cg2_list,
                       cload, res_var, phase_margin, f_unit, seg_tail, seg_diode, seg_ngm):
         # step 1: find stage 2 unit size
-        f = gcd(gcd(seg_tail, seg_diode), seg_ngm)
-        if f % 2 != 0:
+        seg_gcd = gcd(gcd(seg_tail, seg_diode), seg_ngm)
+        if seg_gcd % 2 != 0:
             raise ValueError('All segment numbers must be even.')
-        f //= 2
+        # divide seg_gcd by 2 to make sure all generated segment numbers are even
+        seg_gcd //= 2
 
         # make sure we have enough tail fingers for common mode feedback
-        min_size = 2 if seg_tail // f == 2 else 1
+        min_size = 2 if seg_tail // seg_gcd == 2 else 1
 
         bin_iter = BinaryIterator(min_size, None)
         results = {}
         while bin_iter.has_next():
             cur_size = bin_iter.get_next()
-            cur_gm2_list, cur_ro2_list, cur_c2_list = self._get_stage2_ss(gm2_list, ro2_list, c2_list,
-                                                                          cload, f, cur_size)
+            cur_gm2_list, cur_gds2_list, cur_c2_list, cur_cg2_list = self._get_stage2_ss(gm2_list, gds2_list,
+                                                                                         c2_list, cg2_list,
+                                                                                         cload, seg_gcd, cur_size)
 
-            rz, cf, gain_list, bw_list, pm_list = self._find_rz_cf(gm1_list, cur_gm2_list, ro1_list, cur_ro2_list,
-                                                                   c1_list, cur_c2_list, res_var, phase_margin)
+            cur_c1_list = [c1_tmp + cg2_tmp for c1_tmp, cg2_tmp in zip(c1_list, cur_cg2_list)]
+            rz, cf, gain_list, bw_list, pm_list = self._find_rz_cf(gm1_list, cur_gm2_list, gds1_list, cur_gds2_list,
+                                                                   cur_c1_list, cur_c2_list, res_var, phase_margin)
 
             if min(bw_list) > f_unit:
-                seg_tail2_tot = seg_tail * cur_size // f
+                seg_tail2_tot = seg_tail // seg_gcd * cur_size
                 seg_tail2 = (seg_tail2_tot // 4) * 2
                 seg_tailcm = seg_tail2_tot - seg_tail2
                 bin_iter.save()
@@ -289,10 +284,11 @@ class OpAmpTwoStage(object):
                 results['f_unit'] = bw_list
                 results['phase_margin'] = pm_list
                 results['gm2'] = cur_gm2_list
-                results['ro2'] = cur_ro2_list
+                results['gds2'] = cur_gds2_list
+                results['c1'] = cur_c1_list
                 results['c2'] = cur_c2_list
-                results['seg_diode2'] = seg_diode * cur_size // f
-                results['seg_ngm2'] = seg_ngm * cur_size // f
+                results['seg_diode2'] = seg_diode // seg_gcd * cur_size
+                results['seg_ngm2'] = seg_ngm // seg_gcd * cur_size
                 results['seg_tail2'] = seg_tail2
                 results['seg_tailcm'] = seg_tailcm
             else:
@@ -301,18 +297,17 @@ class OpAmpTwoStage(object):
         return results
 
     @classmethod
-    def _make_circuit(cls, gm1, gm2, r1, r2, c1, c2, rz):
-        cir = LTICircuit()
-        cir.add_res(r1, 'vx', 'gnd')
-        cir.add_cap(c1, 'vx', 'gnd')
-        cir.add_vccs(gm1, 'vx', 'gnd', 'vi')
-        cir.add_res(r2, 'vo', 'gnd')
-        cir.add_cap(c2, 'vo', 'gnd')
-        cir.add_vccs(gm2, 'vo', 'gnd', 'vx')
-        cir.add_res(rz, 'vx', 'vm')
-        return cir
+    def _get_stage2_ss(cls, gm2_list, gds2_list, c2_list, cg2_list, cload, seg_gcd, cur_size):
+        cur_gm2_list, cur_gds2_list, cur_c2_list, cur_cg2_list = [], [], [],  []
+        for gm2, gds2, c2, cg2 in zip(gm2_list, gds2_list, c2_list, cg2_list):
+            cur_gm2_list.append(gm2 * cur_size / seg_gcd)
+            cur_gds2_list.append(gds2 * cur_size / seg_gcd)
+            cur_c2_list.append(cload + c2 * cur_size / seg_gcd)
+            cur_cg2_list.append(cg2 * cur_size / seg_gcd)
 
-    def _find_rz_cf(self, gm1_list, gm2_list, r1_list, r2_list, c1_list, c2_list, res_var, phase_margin,
+        return cur_gm2_list, cur_gds2_list, cur_c2_list, cur_cg2_list
+
+    def _find_rz_cf(self, gm1_list, gm2_list, gds1_list, gds2_list, c1_list, c2_list, res_var, phase_margin,
                     cap_tol=1e-15, cap_step=10e-15):
         """Find minimum miller cap that stabilizes the system.
 
@@ -323,8 +318,8 @@ class OpAmpTwoStage(object):
         rz_nom = rz_worst / (1 - res_var)
         # find maximum Cf needed to stabilize all corners
         cf_min = cap_step
-        for gm1, gm2, r1, r2, c1, c2 in zip(gm1_list, gm2_list, r1_list, r2_list, c1_list, c2_list):
-            cir = self._make_circuit(gm1, gm2, r1, r2, c1, c2, rz_worst)
+        for gm1, gm2, gds1, gds2, c1, c2 in zip(gm1_list, gm2_list, gds1_list, gds2_list, c1_list, c2_list):
+            cir = self._make_circuit(gm1, gm2, gds1, gds2, c1, c2, rz_worst)
 
             bin_iter = FloatBinaryIterator(cf_min, None, cap_tol, search_step=cap_step)
             while bin_iter.has_next():
@@ -339,12 +334,13 @@ class OpAmpTwoStage(object):
                     bin_iter.down()
                 cir.add_cap(-cur_cf, 'vm', 'vo')
 
+            # bin_iter is guaranteed to save at least one value, so don't need to worry about cf_min being None
             cf_min = bin_iter.get_last_save()
 
         # find gain, unity gain bandwidth, and phase margin across corners
         gain_list, bw_list, pm_list = [], [], []
-        for gm1, gm2, r1, r2, c1, c2 in zip(gm1_list, gm2_list, r1_list, r2_list, c1_list, c2_list):
-            cir = self._make_circuit(gm1, gm2, r1, r2, c1, c2, rz_nom)
+        for gm1, gm2, gds1, gds2, c1, c2 in zip(gm1_list, gm2_list, gds1_list, gds2_list, c1_list, c2_list):
+            cir = self._make_circuit(gm1, gm2, gds1, gds2, c1, c2, rz_nom)
             cir.add_cap(cf_min, 'vm', 'vo')
             num, den = cir.get_num_den('vi', 'vo')
             pn = np.poly1d(num)
@@ -354,3 +350,15 @@ class OpAmpTwoStage(object):
             pm_list.append(get_stability_margins(num, den)[0])
 
         return rz_nom, cf_min, gain_list, bw_list, pm_list
+
+    @classmethod
+    def _make_circuit(cls, gm1, gm2, gds1, gds2, c1, c2, rz):
+        cir = LTICircuit()
+        cir.add_conductance(gds1, 'vx', 'gnd')
+        cir.add_cap(c1, 'vx', 'gnd')
+        cir.add_vccs(gm1, 'vx', 'gnd', 'vi')
+        cir.add_conductance(gds2, 'vo', 'gnd')
+        cir.add_cap(c2, 'vo', 'gnd')
+        cir.add_vccs(gm2, 'vo', 'gnd', 'vx')
+        cir.add_res(rz, 'vx', 'vm')
+        return cir

@@ -36,14 +36,16 @@ class LoadDiodePFB(object):
         self._valid_widths = mos_db.width_list
         self._best_op = None
 
-    def design(self, itarg_list, vstar_min, l):
-        # type: (List[float], float, float) -> None
+    def design(self, itarg_list, vds2_list, vstar_min, l):
+        # type: (List[float], List[float], float, float) -> None
         """Design the diode load.
 
         Parameters
         ----------
         itarg_list : List[float]
             target single-ended bias current across simulation environments.
+        vds2_list : List[float]
+            list of op-amp stage 2 vds voltage across simulation environments.
         vstar_min : float
             minimum V* of the diode.
         l : float
@@ -112,7 +114,8 @@ class LoadDiodePFB(object):
                                         seg2_iter.up()
                                         if best_score is None or cur_score > best_score:
                                             best_score = cur_score
-                                            self._best_op = (intent, stack1, stack2, w, seg1, seg2, vgs_list)
+                                            self._best_op = (intent, stack1, stack2, w, seg1, seg2,
+                                                             vgs_list, vds2_list)
 
                             if seg2_iter.get_last_save() is None:
                                 # no solution for seg2, must broke cg_max spec
@@ -176,7 +179,7 @@ class LoadDiodePFB(object):
         if self._best_op is None:
             return None
 
-        intent, stack1, stack2, w, seg1, seg2, vgs_list = self._best_op
+        intent, stack1, stack2, w, seg1, seg2, vgs_list, vds2_list = self._best_op
         self._db.set_dsn_params(w=w, intent=intent, stack=stack1)
         ib1 = self._db.get_function_list('ibias')
         gm1 = self._db.get_function_list('gm')
@@ -190,34 +193,52 @@ class LoadDiodePFB(object):
         cg2 = self._db.get_function_list('cgg')
         cd2 = self._db.get_function_list('cdd')
 
-        vstar_list, ro_list, cgg_list, cdd_list, gm_list, gds_list = [], [], [], [], [], []
-        for ib1f, gm1f, gds1f, cg1f, cd1f, ib2f, gm2f, gds2f, cg2f, cd2f, vgs in \
-                zip(ib1, gm1, gds1, cg1, cd1, ib2, gm2, gds2, cg2, cd2, vgs_list):
-            arg = self._db.get_fun_arg(vbs=0, vds=vgs, vgs=vgs)
-            cur_ib1 = seg1 * float(ib1f(arg))
-            cur_ib2 = seg2 * float(ib2f(arg))
-            cur_gm1 = seg1 * float(gm1f(arg))
-            cur_gm2 = seg2 * float(gm2f(arg))
-            cur_gds1 = seg1 * float(gds1f(arg))
-            cur_gds2 = seg2 * float(gds2f(arg))
-            cur_cg1 = seg1 * float(cg1f(arg))
-            cur_cg2 = seg2 * float(cg2f(arg))
-            cur_cd1 = seg1 * float(cd1f(arg))
-            cur_cd2 = seg2 * float(cd2f(arg))
-            gds_list.append(cur_gds1 + cur_gds2)
-            gm_list.append(cur_gm1 + cur_gm2)
-            vstar_list.append(2 * (cur_ib1 + cur_ib2) / (cur_gm1 + cur_gm2))
-            ro_list.append(1 / (cur_gds1 + cur_gds2 + cur_gm1 - cur_gm2))
-            cgg_list.append(cur_cg1 + cur_cg2)
-            cdd_list.append(cur_cd1 + cur_cd2)
+        vstar1_list, ctot1_list, gds1_list = [], [], []
+        vstar2_list, gm2_list, gds2_list, cgg2_list, cdd2_list = [], [], [], [], []
+        for ib1f, gm1f, gds1f, cg1f, cd1f, ib2f, gm2f, gds2f, cg2f, cd2f, vgs, vds2 in \
+                zip(ib1, gm1, gds1, cg1, cd1, ib2, gm2, gds2, cg2, cd2, vgs_list, vds2_list):
+            arg1 = self._db.get_fun_arg(vbs=0, vds=vgs, vgs=vgs)
+            cur_ib1 = seg1 * float(ib1f(arg1))
+            cur_ib2 = seg2 * float(ib2f(arg1))
+            cur_gm1 = seg1 * float(gm1f(arg1))
+            cur_gm2 = seg2 * float(gm2f(arg1))
+            cur_gds1 = seg1 * float(gds1f(arg1))
+            cur_gds2 = seg2 * float(gds2f(arg1))
+            cur_cg1 = seg1 * float(cg1f(arg1))
+            cur_cg2 = seg2 * float(cg2f(arg1))
+            cur_cd1 = seg1 * float(cd1f(arg1))
+            cur_cd2 = seg2 * float(cd2f(arg1))
+            vstar1_list.append(2 * (cur_ib1 + cur_ib2) / (cur_gm1 + cur_gm2))
+            ctot1_list.append(cur_cg1 + cur_cg2 + cur_cd1 + cur_cd2)
+            gds1_list.append(cur_gds1 + cur_gds2 + cur_gm1 - cur_gm2)
+
+            arg2 = self._db.get_fun_arg(vbs=0, vds=vds2, vgs=vgs)
+            cur_ib1 = seg1 * float(ib1f(arg2))
+            cur_ib2 = seg2 * float(ib2f(arg2))
+            cur_gm1 = seg1 * float(gm1f(arg2))
+            cur_gm2 = seg2 * float(gm2f(arg2))
+            cur_gds1 = seg1 * float(gds1f(arg2))
+            cur_gds2 = seg2 * float(gds2f(arg2))
+            cur_cg1 = seg1 * float(cg1f(arg2))
+            cur_cg2 = seg2 * float(cg2f(arg2))
+            cur_cd1 = seg1 * float(cd1f(arg2))
+            cur_cd2 = seg2 * float(cd2f(arg2))
+            vstar2_list.append(2 * (cur_ib1 + cur_ib2) / (cur_gm1 + cur_gm2))
+            gm2_list.append(cur_gm1 + cur_gm2)
+            gds2_list.append(cur_gds1 + cur_gds2)
+            cgg2_list.append(cur_cg1 + cur_cg2)
+            cdd2_list.append(cur_cd1 + cur_cd2)
+
         return dict(
             vgs=vgs_list,
-            vstar=vstar_list,
-            gm=gm_list,
-            gds=gds_list,
-            ro=ro_list,
-            cgg=cgg_list,
-            cdd=cdd_list,
+            vstar1=vstar1_list,
+            ctot1=ctot1_list,
+            gds1=gds1_list,
+            vstar2=vstar2_list,
+            gm2=gm2_list,
+            gds2=gds2_list,
+            cgg2=cgg2_list,
+            cdd2=cdd2_list,
             intent=intent,
             stack_diode=stack1,
             stack_ngm=stack2,
@@ -249,7 +270,7 @@ class InputGm(object):
                itarg_list,  # type: List[float]
                vg_list,  # type: List[float]
                vd_list,  # type: List[float]
-               rload_list,  # type: List[float]
+               gds_load_list,  # type: List[float]
                vb,  # type: float
                vstar_min,  # type: float
                vds_tail_min,  # type: float
@@ -268,8 +289,8 @@ class InputGm(object):
             gate voltage across simulation environments.
         vd_list : List[float]
             drain voltage across simulation environments.
-        rload_list : List[float]
-            load resistance across simulation environments.
+        gds_load_list : List[float]
+            load conductance across simulation environments.
         vb : float
             body bias voltage.
         vstar_min : float
@@ -320,17 +341,17 @@ class InputGm(object):
                         # now get actual numbers
                         num_seg = max(seg_min, int(tot_seg // 2) * 2)
                         vs_list, score = self._solve_vs(itarg_list, vg_list, vd_list, vs_bnds, vb, num_seg,
-                                                        ib, gm, gds, rload_list, vds_tail_min, vstar_min)
+                                                        ib, gm, gds, gds_load_list, vds_tail_min, vstar_min)
                         if score is not None and (best_score is None or score > best_score):
                             best_score = score
                             self._best_op = (intent, stack, w, num_seg, vg_list, vd_list, vs_list, vb)
 
-    def _solve_vs(self, itarg_list, vg_list, vd_list, vs_bnds, vb, scale, ib, gm, gds, ro_list,
+    def _solve_vs(self, itarg_list, vg_list, vd_list, vs_bnds, vb, scale, ib, gm, gds, gds_load_list,
                   vds_tail_min, vstar_min):
         vs_list = []
         score = None
-        for itarg, ibf, gmf, gdsf, vg, vd, ro, (vs_min, vs_max) in \
-                zip(itarg_list, ib, gm, gds, vg_list, vd_list, ro_list, vs_bnds):
+        for itarg, ibf, gmf, gdsf, vg, vd, gds_load, (vs_min, vs_max) in \
+                zip(itarg_list, ib, gm, gds, vg_list, vd_list, gds_load_list, vs_bnds):
 
             def zero_fun(vs):
                 arg = self._db.get_fun_arg(vbs=vb - vs, vds=vd - vs, vgs=vg - vs)
@@ -352,7 +373,7 @@ class InputGm(object):
                 # check V* spec again
                 return None, None
             gds_cur = gdsf(cur_arg) * scale
-            score_cur = gm_cur / (gds_cur + 1 / ro)
+            score_cur = gm_cur / (gds_cur + gds_load)
             if score is None:
                 score = score_cur
             else:
@@ -400,7 +421,7 @@ class InputGm(object):
         cgg = self._db.get_function_list('cgg')
         cdd = self._db.get_function_list('cdd')
 
-        vstar_list, gm_list, ro_list, cgg_list, cdd_list = [], [], [], [], []
+        vstar_list, gm_list, gds_list, cgg_list, cdd_list = [], [], [], [], []
         for ibf, gmf, gdsf, cggf, cddf, vg, vd, vs in zip(ib, gm, gds, cgg, cdd, vg_list, vd_list, vs_list):
             arg = self._db.get_fun_arg(vbs=vb - vs, vds=vd - vs, vgs=vg - vs)
             cur_ib = seg * float(ibf(arg))
@@ -409,7 +430,7 @@ class InputGm(object):
             cur_cgg = seg * float(cggf(arg))
             cur_cdd = seg * float(cddf(arg))
             vstar_list.append(2 * cur_ib / cur_gm)
-            ro_list.append(1 / cur_gds)
+            gds_list.append(cur_gds)
             cgg_list.append(cur_cgg)
             cdd_list.append(cur_cdd)
             gm_list.append(cur_gm)
@@ -417,7 +438,7 @@ class InputGm(object):
         return dict(
             vstar=vstar_list,
             gm=gm_list,
-            ro=ro_list,
+            gds=gds_list,
             cgg=cgg_list,
             cdd=cdd_list,
             intent=intent,

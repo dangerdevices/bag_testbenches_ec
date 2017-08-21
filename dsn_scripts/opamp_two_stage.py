@@ -22,8 +22,8 @@ def run_main():
     amp_specs = read_yaml(amp_specs_fname)
 
     print('create transistor database')
-    nch_db = MOSDBDiscrete(w_list, nch_conf_list, 1)
-    pch_db = MOSDBDiscrete(w_list, pch_conf_list, 1)
+    nch_db = MOSDBDiscrete(w_list, nch_conf_list, 1, method='spline')
+    pch_db = MOSDBDiscrete(w_list, pch_conf_list, 1, method='spline')
 
     print('create design')
     dsn = OpAmpTwoStage(nch_db, pch_db)
@@ -52,8 +52,8 @@ def run_test(method='linear'):
 
     vdd = 0.9
     vin = 0.45
-    vtail = 0.6392
-    vmid = 0.2614
+    vtail = 0.6393
+    vmid = 0.2617
 
     pch_db.set_dsn_params(w=2, intent='ulvt', stack=4)
     in_params = pch_db.query(vbs=vdd-vtail, vds=vmid-vtail, vgs=vin-vtail)
@@ -78,5 +78,5 @@ def run_test(method='linear'):
     print(4 * gmi / (4 * gdsi + 2 * gdsd + 4 * gdsn + 2 * gmd - 4 * gmn))
 
 if __name__ == '__main__':
-    # run_main()
-    run_test(method='spline')
+    run_main()
+    # run_test(method='spline')
