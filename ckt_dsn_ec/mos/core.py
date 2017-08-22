@@ -555,6 +555,9 @@ class MOSDBDiscrete(object):
         output : Union[RegGridInterpVectorFunction, RegGridInterpFunction]
             the output vector function.
         """
+        if not env and len(self.env_list) == 1:
+            env = self.env_list[0]
+
         if not env:
             return VectorDiffFunction(self.get_function_list(name, **kwargs))
         else:
@@ -615,7 +618,6 @@ class MOSDBDiscrete(object):
             the characterization results.
         """
         fun_arg = self.get_fun_arg(**kwargs)
-
         results = {name: self.get_function(name, **kwargs)(fun_arg) for name in self._ss_outputs}
 
         for key in self._ss_swp_names:

@@ -12,7 +12,7 @@ from ckt_dsn_ec.analog.amplifier.opamp_two_stage import OpAmpTwoStage
 def run_main():
     interp_method = 'spline'
     w_list = [2]
-    nch_conf_list = ['data/mos_char_nch_stack_w2/specs.yaml',
+    nch_conf_list = ['data/mos_char_nch_stack_w2_vbs/specs.yaml',
                      # 'data/mos_char_nch_stack/specs.yaml',
                      ]
     pch_conf_list = ['data/mos_char_pch_stack_w2_vbs/specs.yaml',
@@ -70,6 +70,8 @@ def run_test(method='linear'):
     nch_db.set_dsn_params(w=2, intent='svt', stack=4)
     ngm_params = nch_db.query(vbs=0, vds=vmid, vgs=vmid)
 
+    pprint.pprint(in_params)
+
     gmi = in_params['gm']
     gdsi = in_params['gds']
     gmd = diode_params['gm']
@@ -108,6 +110,8 @@ def run_test(method='linear'):
     print(gain2_0, gain2_1)
     print(gain1 * gain2_0, gain1 * gain2_1)
 
+    return nch_db.get_function('ibias', 'ff_hot')
+
 if __name__ == '__main__':
     run_main()
-    # run_test(method='spline')
+    # ibf = run_test(method='spline')
