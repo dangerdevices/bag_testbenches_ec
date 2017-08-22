@@ -310,7 +310,7 @@ class MOSCharSS(SimulationManager):
 
         ss_dict['cgg'] = [cgd + cgs + cgb for (cgd, cgs, cgb) in zip(cgdl, cgsl, cgbl)]
         ss_dict['cdd'] = [cgd + cds + cdb for (cgd, cds, cdb) in zip(cgdl, cdsl, cdbl)]
-        ss_dict['css'] = [cds + cds + csb for (cds, cds, csb) in zip(cgsl, cdsl, csbl)]
+        ss_dict['css'] = [cgs + cds + csb for (cgs, cds, csb) in zip(cgsl, cdsl, csbl)]
 
     def _get_integrated_noise(self, fstart, fstop, scale=1.0):
         # type: (Optional[float], Optional[float], float) -> Tuple[List[str], Dict[str, List[LinearInterpolator]]]
