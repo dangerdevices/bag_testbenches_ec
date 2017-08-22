@@ -244,8 +244,8 @@ class MOSCharSS(SimulationManager):
             with open_file(vgs_file, 'w') as f:
                 yaml.dump(ans, f)
 
-    def _get_ss_params(self, method='linear'):
-        # type: () -> Tuple[List[str], List[str], Dict[str, Dict[str, List[LinearInterpolator]]]]
+    def _get_ss_params(self, method='linear', cfit_method='average'):
+        # type: (str, str) -> Tuple[List[str], List[str], Dict[str, Dict[str, List[LinearInterpolator]]]]
         tb_type = 'tb_sp'
         tb_specs = self.specs[tb_type]
         sch_params = self.specs['sch_params']
@@ -265,7 +265,7 @@ class MOSCharSS(SimulationManager):
             ibias = results['ibias']
             if not self.is_nmos(val_list):
                 ibias *= -1
-            ss_dict = mos_y_to_ss(results, char_freq, fg, ibias)
+            ss_dict = mos_y_to_ss(results, char_freq, fg, ibias, cfit_method=cfit_method)
 
             if corner_list is None:
                 ss_swp_names = [name for name in axis_names[1:] if name in results]
@@ -365,9 +365,10 @@ class MOSCharSS(SimulationManager):
                     scale=1.0,  # type: float
                     temp=300,  # type: float
                     method='linear',  # type: str
+                    cfit_method='average',  # type: str
                     ):
         # type: (...) -> Tuple[List[str], List[str], Dict[str, Dict[str, List[LinearInterpolator]]]]
-        corner_list, ss_swp_names, tot_dict = self._get_ss_params(method=method)
+        corner_list, ss_swp_names, tot_dict = self._get_ss_params(method=method, cfit_method=cfit_method)
         if fstart is not None and fstop is not None:
             _, noise_dict = self._get_integrated_noise(fstart, fstop, scale=scale)
 
@@ -404,6 +405,8 @@ class MOSDBDiscrete(object):
         noise temperature.
     method : str
         interpolation method.
+    cfit_method : str
+        method used to fit capacitance to Y parameters.
     """
 
     def __init__(self,
@@ -415,6 +418,7 @@ class MOSDBDiscrete(object):
                  noise_scale=1.0,  # type: float
                  noise_temp=300,  # type: float
                  method='linear',  # type: str
+                 cfit_method='average',  # type: str
                  ):
         # type: (...) -> None
         # error checking
@@ -439,7 +443,7 @@ class MOSDBDiscrete(object):
 
             corners, ss_swp_names, ss_dict = sim.get_ss_info(noise_fstart, noise_fstop,
                                                              scale=noise_scale, temp=noise_temp,
-                                                             method=method)
+                                                             method=method, cfit_method=cfit_method)
             if self._sim_envs is None:
                 self._ss_swp_names = ss_swp_names
                 self._sim_envs = corners

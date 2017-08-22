@@ -23,8 +23,8 @@ def run_main():
     amp_specs = read_yaml(amp_specs_fname)
 
     print('create transistor database')
-    nch_db = MOSDBDiscrete(w_list, nch_conf_list, 1, method=interp_method)
-    pch_db = MOSDBDiscrete(w_list, pch_conf_list, 1, method=interp_method)
+    nch_db = MOSDBDiscrete(w_list, nch_conf_list, 1, method=interp_method, cfit_method='average')
+    pch_db = MOSDBDiscrete(w_list, pch_conf_list, 1, method=interp_method, cfit_method='average')
 
     print('create design')
     dsn = OpAmpTwoStage(nch_db, pch_db)
