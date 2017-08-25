@@ -110,6 +110,10 @@ class TailStage1(object):
         )
 
 
+class StageOneCurrentError(Exception):
+    pass
+
+
 class OpAmpTwoStage(object):
     """A two stage fully differential operational amplifier.
 
@@ -263,6 +267,7 @@ class OpAmpTwoStage(object):
 
         bin_iter = BinaryIterator(min_size, None)
         results = {}
+        best_funity = None
         while bin_iter.has_next():
             cur_size = bin_iter.get_next()
             seg_dict['tail2'] = seg_tail1 // seg_gcd * cur_size
@@ -276,7 +281,12 @@ class OpAmpTwoStage(object):
                                           cur_scale2, cur_gm2_list, res_var, phase_margin)
             rz, cf, gain_list, f3db_list, funity_list, pm_list = ac_results
 
-            if min(funity_list) > f_unit:
+            cur_funity = min(funity_list)
+            if best_funity is None or cur_funity > best_funity:
+                best_funity = cur_funity
+
+            print('stage2_size = %d, rz = %.4g, cf = %.4g, funity = %.4g' % (cur_size, rz, cf, cur_funity))
+            if cur_funity > f_unit:
                 seg_tail2_tot = seg_dict['tail2']
                 seg_tail2 = (seg_tail2_tot // 4) * 2
                 seg_tailcm = seg_tail2_tot - seg_tail2
@@ -294,6 +304,10 @@ class OpAmpTwoStage(object):
                 results['seg_tail2'] = seg_tail2
                 results['seg_tailcm'] = seg_tailcm
             else:
+                if bin_iter.get_last_save() is None and cur_funity < best_funity:
+                    # we increase stage 2 sizing but untiy gain bandwidth decreased.
+                    # we reach limit
+                    raise StageOneCurrentError('Insufficient stage 1 current.')
                 bin_iter.up()
 
         seg_dict['tail2'] = results['seg_tail2']
@@ -316,7 +330,7 @@ class OpAmpTwoStage(object):
 
     def _find_rz_cf(self, gm_db, load_db, vtail_list, vg_list, vmid_list, vout_list, vbias_list,
                     vb_gm, vb_load, cload, cpar1, w_dict, th_dict, stack_dict, seg_dict, scale2,
-                    gm2_list, res_var, phase_margin, cap_tol=1e-15, cap_step=10e-15):
+                    gm2_list, res_var, phase_margin, cap_tol=1e-15, cap_step=10e-15, cap_min=1e-15):
         """Find minimum miller cap that stabilizes the system.
 
         NOTE: This function assume phase of system for any miller cap value will not loop around 360,
@@ -325,7 +339,7 @@ class OpAmpTwoStage(object):
         rz_worst = 1 / min(gm2_list)
         rz_nom = rz_worst / (1 - res_var)
         # find maximum Cf needed to stabilize all corners
-        cf_min = cap_step
+        cf_min = cap_min
         for env_idx, (vtail, vg, vmid, vout, vbias) in \
                 enumerate(zip(vtail_list, vg_list, vmid_list, vout_list, vbias_list)):
             cir = self._make_circuit(env_idx, gm_db, load_db, vtail, vg, vmid, vout, vbias, vb_gm, vb_load,
