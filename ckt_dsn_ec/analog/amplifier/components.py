@@ -91,6 +91,7 @@ class LoadDiodePFB(object):
                         while seg1_iter.has_next():
                             seg1 = seg1_iter.get_next()
 
+                            all_neg = True
                             seg2_iter = BinaryIterator(0, None, step=2)
                             while seg2_iter.has_next():
                                 seg2 = seg2_iter.get_next()
@@ -106,8 +107,10 @@ class LoadDiodePFB(object):
                                 else:
                                     cur_score = self._compute_score(vstar_min, seg1, seg2, ib1, ib2,
                                                                     gm1, gm2, gds1, gds2, vgs_list)
+                                    if cur_score != -1:
+                                        all_neg = False
 
-                                    if cur_score is None:
+                                    if cur_score < 0:
                                         seg2_iter.down()
                                     else:
                                         seg2_iter.save()
@@ -118,8 +121,15 @@ class LoadDiodePFB(object):
                                                              vgs_list, vds2_list)
 
                             if seg2_iter.get_last_save() is None:
-                                # no solution for seg2, must broke cg_max spec
-                                seg1_iter.down()
+                                # no solution for seg2
+                                if all_neg:
+                                    # all solutions encountered have negative resistance,
+                                    # this means we have insufficent number of diode fingers.
+                                    seg1_iter.up()
+                                else:
+                                    # all positive resistance solution break V*_min specs.
+                                    # this means we have too many number of fingers.
+                                    seg1_iter.down()
                             else:
                                 seg1_iter.save()
                                 seg1_iter.up()
@@ -167,8 +177,12 @@ class LoadDiodePFB(object):
             cur_ib2 = scale2 * fib2(arg)
             cur_vstar = 2 * (cur_ib1 + cur_ib2) / (cur_gm1 + cur_gm2)
             cur_gds_tot = cur_gds1 + cur_gds2 + cur_gm1 - cur_gm2
-            if cur_gm1 <= cur_gm2 or cur_vstar < vstar_min:
-                return None
+            if cur_gm1 <= cur_gm2:
+                # negative resistance
+                return -1
+            if cur_vstar < vstar_min:
+                # break minimum V* spec
+                return -2
 
             score = min(score, (cur_gm1 + cur_gm2) / cur_gds_tot)
 
