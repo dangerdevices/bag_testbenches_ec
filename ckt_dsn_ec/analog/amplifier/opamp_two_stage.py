@@ -167,6 +167,7 @@ class OpAmpTwoStage(object):
         tail1 = TailStage1(gm_db)
 
         # design load
+        print('designing load')
         load.design(itarg_list, vds2_list, vstar_load_min, l)
         load_info = load.get_dsn_info()
         vgs_load_list = load_info['vgs']
@@ -182,6 +183,7 @@ class OpAmpTwoStage(object):
             vmid_list = [vdd - vgs for vgs in vgs_load_list]
 
         # design input gm
+        print('designing input gm')
         gm.design(itarg_list, vg_list, vmid_list, gds_load_list, vb_gm, vstar_gm_min, vds_tail_min, l,
                   seg_min=seg_gm_min, stack_list=[stack_ngm])
         gm_info = gm.get_dsn_info()
@@ -195,6 +197,7 @@ class OpAmpTwoStage(object):
         gain1_list = [gm1 / gds1 for gm1, gds1 in zip(gm1_list, gds1_list)]
 
         # design stage 1 tail
+        print('designing tail')
         tail1.design(itarg_list, vtail_list, vout_list, vb_gm, l, seg_gm, stack_gm)
         tail1_info = tail1.get_dsn_info()
         vbias_list = [vgs_tail + vb_gm for vgs_tail in tail1_info['vgs']]
@@ -210,6 +213,7 @@ class OpAmpTwoStage(object):
                     'ngm1': seg_ngm,
                     }
 
+        print('designing stage 2')
         stage2_results = self.design_stage2(gm_db, load_db, vtail_list, vg_list, vmid_list, vout_list, vbias_list,
                                             vb_gm, vb_load, cload, cpar1, w_dict, th_dict, stack_dict, seg_dict,
                                             gm2_list, res_var, phase_margin, f_unit)
@@ -241,6 +245,8 @@ class OpAmpTwoStage(object):
 
             sch_info=sch_info,
         )
+
+        print('done')
 
     def get_dsn_info(self):
         # type: () -> Optional[Dict[str, Any]]
