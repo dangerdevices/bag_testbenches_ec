@@ -9,7 +9,7 @@ import scipy.optimize as sciopt
 
 from bag.math import gcd
 from bag.data.lti import LTICircuit, get_stability_margins, get_w_crossings, get_w_3db
-from bag.util.search import FloatBinaryIterator, BinaryIterator
+from bag.util.search import FloatBinaryIterator, minimize_cost_golden
 
 from ckt_dsn_ec.mos.core import MOSDBDiscrete
 
@@ -231,7 +231,6 @@ class OpAmpTwoStage(object):
             gm1=gm1_list,
             gds1=gds1_list,
             gain1=gain1_list,
-            gm2=stage2_results['gm2'],
 
             rz=stage2_results['rz'],
             cf=stage2_results['cf'],
@@ -265,11 +264,7 @@ class OpAmpTwoStage(object):
         # make sure we have enough tail fingers for common mode feedback
         min_size = 2 if seg_tail1 // seg_gcd == 2 else 1
 
-        bin_iter = BinaryIterator(min_size, None)
-        results = {}
-        best_funity = None
-        while bin_iter.has_next():
-            cur_size = bin_iter.get_next()
+        def ac_results_fun(cur_size):
             seg_dict['tail2'] = seg_tail1 // seg_gcd * cur_size
             seg_dict['diode2'] = seg_diode1 // seg_gcd * cur_size
             seg_dict['ngm2'] = seg_ngm1 // seg_gcd * cur_size
@@ -279,43 +274,32 @@ class OpAmpTwoStage(object):
             ac_results = self._find_rz_cf(gm_db, load_db, vtail_list, vg_list, vmid_list, vout_list, vbias_list,
                                           vb_gm, vb_load, cload, cpar1, w_dict, th_dict, stack_dict, seg_dict,
                                           cur_scale2, cur_gm2_list, res_var, phase_margin)
-            rz, cf, gain_list, f3db_list, funity_list, pm_list = ac_results
 
-            cur_funity = min(funity_list)
-            if best_funity is None or cur_funity > best_funity:
-                best_funity = cur_funity
+            return ac_results
 
-            print('stage2_size = %d, rz = %.4g, cf = %.4g, funity = %.4g' % (cur_size, rz, cf, cur_funity))
-            if cur_funity > f_unit:
-                seg_tail2_tot = seg_dict['tail2']
-                seg_tail2 = (seg_tail2_tot // 4) * 2
-                seg_tailcm = seg_tail2_tot - seg_tail2
-                bin_iter.save()
-                bin_iter.down()
-                results['rz'] = rz
-                results['cf'] = cf
-                results['gain'] = gain_list
-                results['f_3db'] = f3db_list
-                results['f_unity'] = funity_list
-                results['phase_margin'] = pm_list
-                results['gm2'] = cur_gm2_list
-                results['seg_diode2'] = seg_dict['diode2']
-                results['seg_ngm2'] = seg_dict['ngm2']
-                results['seg_tail2'] = seg_tail2
-                results['seg_tailcm'] = seg_tailcm
-            else:
-                if bin_iter.get_last_save() is None and cur_funity < best_funity:
-                    # we increase stage 2 sizing but untiy gain bandwidth decreased.
-                    # we reach limit
-                    raise StageOneCurrentError('Insufficient stage 1 current.')
-                bin_iter.up()
+        def funity_fun(cur_size):
+            return min(ac_results_fun(cur_size)[0])
 
-        seg_dict['tail2'] = results['seg_tail2']
-        seg_dict['tailcm'] = results['seg_tailcm']
-        seg_dict['diode2'] = results['seg_diode2']
-        seg_dict['ngm2'] = results['seg_ngm2']
+        min_result = minimize_cost_golden(funity_fun, f_unit, offset=min_size)
 
-        return results
+        if min_result.x is None:
+            raise StageOneCurrentError('Insufficient stage 1 current.  funity_max = %.4g' % min_result.vmax)
+
+        funity_list, rz_nom, cf_min, gain_list, f3db_list, pm_list = ac_results_fun(min_result.x)
+
+        seg_tail2_tot = seg_dict['tail2']
+        seg_tail2 = (seg_tail2_tot // 4) * 2
+        seg_tailcm = seg_tail2_tot - seg_tail2
+        seg_dict['tail2'] = seg_tail2
+        seg_dict['tailcm'] = seg_tailcm
+        return dict(
+            rz=rz_nom,
+            cf=cf_min,
+            gain=gain_list,
+            f_3db=f3db_list,
+            f_unity=funity_list,
+            phase_margin=pm_list,
+        )
 
     @classmethod
     def _get_stage2_ss(cls, gm2_list, gds2_list, c2_list, cg2_list, cload, seg_gcd, cur_size):
@@ -379,7 +363,7 @@ class OpAmpTwoStage(object):
             funity_list.append(get_w_crossings(num, den)[0] / 2 / np.pi)
             pm_list.append(get_stability_margins(num, den)[0])
 
-        return rz_nom, cf_min, gain_list, f3db_list, funity_list, pm_list
+        return funity_list, rz_nom, cf_min, gain_list, f3db_list, pm_list
 
     @classmethod
     def _make_circuit(cls, env_idx, gm_db, load_db, vtail, vg, vmid, vout, vbias, vb_gm, vb_load, cload, cpar1,
