@@ -64,26 +64,18 @@ class MOSCharSS(SimulationManager):
         # type: (Optional[BagProject], str) -> None
         super(MOSCharSS, self).__init__(prj, spec_file)
 
-    def get_sch_lay_params(self, val_list):
-        # type: (Tuple[Any, ...]) -> Tuple[Dict[str, Any], Dict[str, Any]]
-        sch_params = self.specs['sch_params'].copy()
+    def get_layout_params(self, val_list):
+        # type: (Tuple[Any, ...]) -> Dict[str, Any]
         lay_params = self.specs['layout_params'].copy()
         for var, val in zip(self.swp_var_list, val_list):
-            sch_params[var] = val
+            lay_params[var] = val
 
-        lay_params['mos_type'] = sch_params['mos_type']
-        lay_params['lch'] = sch_params['l']
-        lay_params['w'] = sch_params['w']
-        lay_params['threshold'] = sch_params['intent']
-        lay_params['stack'] = sch_params['stack']
-        lay_params['fg'] = sch_params['nf']
-        lay_params['fg_dum'] = sch_params['ndum']
-        return sch_params, lay_params
+        return lay_params
 
     def get_default_dsn_value(self, name):
         # type: (str) -> Any
         """Returns default design parameter value."""
-        return self.specs['sch_params'][name]
+        return self.specs['layout_params'][name]
 
     def is_nmos(self, val_list):
         # type: (Tuple[Any, ...]) -> bool
@@ -94,7 +86,7 @@ class MOSCharSS(SimulationManager):
             return val_list[idx] == 'nch'
         except ValueError:
             # mos_type is not one of the sweep.
-            return self.specs['sch_params']['mos_type'] == 'nch'
+            return self.specs['layout_params']['mos_type'] == 'nch'
 
     def get_vgs_specs(self):
         # type: () -> Dict[str, Any]
@@ -199,9 +191,9 @@ class MOSCharSS(SimulationManager):
         dsn_name_base = self.specs['dsn_name_base']
         root_dir = self.specs['root_dir']
         vgs_file = self.specs['vgs_file']
-        sch_params = self.specs['sch_params']
+        layout_params = self.specs['layout_params']
 
-        fg = sch_params['nf']
+        fg = layout_params['nf']
         ibias_min_fg = tb_specs['ibias_min_fg']
         ibias_max_fg = tb_specs['ibias_max_fg']
         vgs_res = tb_specs['vgs_resolution']
@@ -248,10 +240,10 @@ class MOSCharSS(SimulationManager):
         # type: (str, str) -> Tuple[List[str], List[str], Dict[str, Dict[str, List[LinearInterpolator]]]]
         tb_type = 'tb_sp'
         tb_specs = self.specs[tb_type]
-        sch_params = self.specs['sch_params']
+        layout_params = self.specs['layout_params']
         dsn_name_base = self.specs['dsn_name_base']
 
-        fg = sch_params['nf']
+        fg = layout_params['nf']
         char_freq = tb_specs['tb_params']['sp_freq']
 
         axis_names = ['corner', 'vbs', 'vds', 'vgs']
@@ -315,10 +307,10 @@ class MOSCharSS(SimulationManager):
     def _get_integrated_noise(self, fstart, fstop, scale=1.0):
         # type: (Optional[float], Optional[float], float) -> Tuple[List[str], Dict[str, List[LinearInterpolator]]]
         tb_type = 'tb_noise'
-        sch_params = self.specs['sch_params']
+        layout_params = self.specs['layout_params']
         dsn_name_base = self.specs['dsn_name_base']
 
-        fg = sch_params['nf']
+        fg = layout_params['nf']
 
         axis_names = ['corner', 'vbs', 'vds', 'vgs', 'freq']
         ss_swp_names = None  # type: List[str]

@@ -236,8 +236,8 @@ class OpAmpTwoStage(object):
             gds1=gds1_list,
             gain1=gain1_list,
 
-            rz=stage2_results['rz'],
-            cf=stage2_results['cf'],
+            rfb=stage2_results['rz'],
+            cfb=stage2_results['cf'],
             gain_tot=stage2_results['gain'],
             f_3db=stage2_results['f_3db'],
             f_unity=stage2_results['f_unity'],

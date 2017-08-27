@@ -43,14 +43,14 @@ class bag_testbenches_ec__mos_analogbase(Module):
     Fill in high level description here.
     """
 
-    param_list = ['mos_type', 'w', 'l', 'nf', 'intent', 'ndum', 'stack']
+    param_list = ['mos_type', 'w', 'lch', 'fg', 'intent', 'fg_dum', 'stack']
 
     def __init__(self, bag_config, parent=None, prj=None, **kwargs):
         Module.__init__(self, bag_config, yaml_file, parent=parent, prj=prj, **kwargs)
         for par in self.param_list:
             self.parameters[par] = None
 
-    def design(self, mos_type='nch', w=4, l=16e-9, nf=10, intent='standard', ndum=4, stack=1):
+    def design(self, mos_type='nch', w=4, lch=16e-9, fg=10, intent='standard', fg_dum=4, stack=1):
         """To be overridden by subclasses to design this module.
 
         This method should fill in values for all parameters in
@@ -72,7 +72,7 @@ class bag_testbenches_ec__mos_analogbase(Module):
                 raise Exception('Parameter %s not defined' % par)
             self.parameters[par] = local_dict[par]
 
-        if nf == 1:
+        if fg == 1:
             raise ValueError('Cannot make 1 finger transistor.')
         # select the correct transistor type
         if mos_type == 'nch':
@@ -87,12 +87,12 @@ class bag_testbenches_ec__mos_analogbase(Module):
         term_list = []
         # add stack transistors
         for idx in range(stack):
-            name_list.append('%s%d<%d:0>' % (inst_name, idx, nf - 1))
+            name_list.append('%s%d<%d:0>' % (inst_name, idx, fg - 1))
             cur_term = {}
             if idx != stack - 1:
-                cur_term['S'] = 'mid%d<%d:0>' % (idx, nf - 1)
+                cur_term['S'] = 'mid%d<%d:0>' % (idx, fg - 1)
             if idx != 0:
-                cur_term['D'] = 'mid%d<%d:0>' % (idx - 1, nf - 1)
+                cur_term['D'] = 'mid%d<%d:0>' % (idx - 1, fg - 1)
             term_list.append(cur_term)
 
         name_list.append('XD0')
@@ -103,40 +103,6 @@ class bag_testbenches_ec__mos_analogbase(Module):
 
         # design transistors
         for idx in range(stack):
-            self.instances[inst_name][idx].design(w=w, l=l, nf=1, intent=intent)
-        self.instances[inst_name][stack].design(w=w, l=l, nf=2, intent=intent)
-        self.instances[inst_name][stack + 1].design(w=w, l=l, nf=(ndum * 2 - 2), intent=intent)
-
-    def get_layout_params(self, **kwargs):
-        """Returns a dictionary with layout parameters.
-
-        This method computes the layout parameters used to generate implementation's
-        layout.  Subclasses should override this method if you need to run post-extraction
-        layout.
-
-        Parameters
-        ----------
-        kwargs :
-            any extra parameters you need to generate the layout parameters dictionary.
-            Usually you specify layout-specific parameters here, like metal layers of
-            input/output, customizable wire sizes, and so on.
-
-        Returns
-        -------
-        params : dict[str, any]
-            the layout parameters dictionary.
-        """
-        return {}
-
-    def get_layout_pin_mapping(self):
-        """Returns the layout pin mapping dictionary.
-
-        This method returns a dictionary used to rename the layout pins, in case they are different
-        than the schematic pins.
-
-        Returns
-        -------
-        pin_mapping : dict[str, str]
-            a dictionary from layout pin names to schematic pin names.
-        """
-        return {}
+            self.instances[inst_name][idx].design(w=w, l=lch, nf=1, intent=intent)
+        self.instances[inst_name][stack].design(w=w, l=lch, nf=2, intent=intent)
+        self.instances[inst_name][stack + 1].design(w=w, l=lch, nf=(fg_dum * 2 - 2), intent=intent)
