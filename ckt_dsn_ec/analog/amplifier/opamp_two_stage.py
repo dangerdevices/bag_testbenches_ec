@@ -218,7 +218,7 @@ class OpAmpTwoStage(object):
                                             vb_gm, vb_load, cload, cpar1, w_dict, th_dict, stack_dict, seg_dict,
                                             gm2_list, res_var, phase_margin, f_unit)
 
-        sch_info = dict(
+        layout_info = dict(
             w_dict=w_dict,
             th_dict=th_dict,
             stack_dict=stack_dict,
@@ -243,7 +243,7 @@ class OpAmpTwoStage(object):
             f_unity=stage2_results['f_unity'],
             phase_margin=stage2_results['phase_margin'],
 
-            sch_info=sch_info,
+            layout_info=layout_info,
         )
 
         print('done')
