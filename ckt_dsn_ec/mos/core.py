@@ -193,7 +193,7 @@ class MOSCharSS(SimulationManager):
         vgs_file = self.specs['vgs_file']
         layout_params = self.specs['layout_params']
 
-        fg = layout_params['nf']
+        fg = layout_params['fg']
         ibias_min_fg = tb_specs['ibias_min_fg']
         ibias_max_fg = tb_specs['ibias_max_fg']
         vgs_res = tb_specs['vgs_resolution']
@@ -243,7 +243,7 @@ class MOSCharSS(SimulationManager):
         layout_params = self.specs['layout_params']
         dsn_name_base = self.specs['dsn_name_base']
 
-        fg = layout_params['nf']
+        fg = layout_params['fg']
         char_freq = tb_specs['tb_params']['sp_freq']
 
         axis_names = ['corner', 'vbs', 'vds', 'vgs']
@@ -310,7 +310,7 @@ class MOSCharSS(SimulationManager):
         layout_params = self.specs['layout_params']
         dsn_name_base = self.specs['dsn_name_base']
 
-        fg = layout_params['nf']
+        fg = layout_params['fg']
 
         axis_names = ['corner', 'vbs', 'vds', 'vgs', 'freq']
         ss_swp_names = None  # type: List[str]
