@@ -9,7 +9,7 @@ import scipy.optimize as sciopt
 
 from bag.math import gcd
 from bag.data.lti import LTICircuit, get_stability_margins, get_w_crossings, get_w_3db
-from bag.util.search import FloatBinaryIterator, minimize_cost_golden
+from bag.util.search import FloatBinaryIterator, BinaryIterator, minimize_cost_golden
 
 from ckt_dsn_ec.mos.core import MOSDBDiscrete
 
@@ -208,7 +208,7 @@ class OpAmpTwoStage(object):
         stack_dict = {'tail': stack_gm, 'in': stack_gm, 'diode': stack_diode, 'ngm': stack_ngm}
         seg_dict = {'tail1': seg_gm,
                     'in': seg_gm,
-                    'ref': max(2, seg_gm // max_ref_ratio),
+                    'ref': max(2, -((-seg_gm // max_ref_ratio) // 2) * 2),
                     'diode1': seg_diode,
                     'ngm1': seg_ngm,
                     }
@@ -217,6 +217,10 @@ class OpAmpTwoStage(object):
         stage2_results = self.design_stage2(gm_db, load_db, vtail_list, vg_list, vmid_list, vout_list, vbias_list,
                                             vb_gm, vb_load, cload, cpar1, w_dict, th_dict, stack_dict, seg_dict,
                                             gm2_list, res_var, phase_margin, f_unit)
+
+        scale2 = seg_dict['diode2'] / seg_dict['diode1']
+        scaler = seg_dict['ref'] / seg_dict['tail1']
+        itot_list = [(2 * (1 + scale2) + scaler) * itarg for itarg in itarg_list]
 
         layout_info = dict(
             w_dict=w_dict,
@@ -229,6 +233,7 @@ class OpAmpTwoStage(object):
             vtail=vtail_list,
             vmid=vmid_list,
             vbias=vbias_list,
+            itot=itot_list,
 
             vstar=gm_info['vstar'],
             cin=gm_info['cgg'],
@@ -284,9 +289,24 @@ class OpAmpTwoStage(object):
             return ac_results
 
         def funity_fun(cur_size):
-            return min(ac_results_fun(cur_size)[0])
+            fu_list = ac_results_fun(cur_size)[0]
+            if fu_list is None:
+                return -1
+            # noinspection PyTypeChecker
+            return min(fu_list)
 
-        min_result = minimize_cost_golden(funity_fun, f_unit, offset=min_size)
+        # find min_size such that amplifier is stable
+        min_bin_iter = BinaryIterator(min_size, None)
+        while min_bin_iter.has_next():
+            test_size = min_bin_iter.get_next()
+            test_fu = funity_fun(test_size)
+            if test_fu >= 0:
+                min_bin_iter.save()
+                min_bin_iter.down()
+            else:
+                min_bin_iter.up()
+
+        min_result = minimize_cost_golden(funity_fun, f_unit, offset=min_bin_iter.get_last_save())
 
         if min_result.x is None:
             raise StageOneCurrentError('Insufficient stage 1 current.  funity_max = %.4g' % min_result.vmax)
@@ -320,7 +340,7 @@ class OpAmpTwoStage(object):
 
     def _find_rz_cf(self, gm_db, load_db, vtail_list, vg_list, vmid_list, vout_list, vbias_list,
                     vb_gm, vb_load, cload, cpar1, w_dict, th_dict, stack_dict, seg_dict, scale2,
-                    gm2_list, res_var, phase_margin, cap_tol=1e-15, cap_step=10e-15, cap_min=1e-15):
+                    gm2_list, res_var, phase_margin, cap_tol=1e-15, cap_step=10e-15, cap_min=1e-15, cap_max=1e-9):
         """Find minimum miller cap that stabilizes the system.
 
         NOTE: This function assume phase of system for any miller cap value will not loop around 360,
@@ -343,6 +363,9 @@ class OpAmpTwoStage(object):
                 num, den = cir.get_num_den('in', 'out')
                 cur_pm, _ = get_stability_margins(num, den)
                 if cur_pm < phase_margin:
+                    if cur_cf > cap_max:
+                        # no way to make amplifier stable, just return
+                        return None, None, None, None, None, None
                     bin_iter.up()
                 else:
                     bin_iter.save()

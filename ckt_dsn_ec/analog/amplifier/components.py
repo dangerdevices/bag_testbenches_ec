@@ -52,11 +52,11 @@ class LoadDiodePFB(object):
             channel length.
         """
         # simple error checking.
-        if 'l' in self._dsn_params:
+        if 'lch' in self._dsn_params:
             self._db.set_dsn_params(l=l)
         else:
             lstr = float_to_si_string(l)
-            db_lstr = float_to_si_string(self._db.get_default_dsn_value('l'))
+            db_lstr = float_to_si_string(self._db.get_default_dsn_value('lch'))
             if lstr != db_lstr:
                 raise ValueError('Given length = %s, but DB length = %s' % (lstr, db_lstr))
 
@@ -319,11 +319,11 @@ class InputGm(object):
             If given, we will only consider these stack values.
         """
         # simple error checking.
-        if 'l' in self._dsn_params:
+        if 'lch' in self._dsn_params:
             self._db.set_dsn_params(l=l)
         else:
             lstr = float_to_si_string(l)
-            db_lstr = float_to_si_string(self._db.get_default_dsn_value('l'))
+            db_lstr = float_to_si_string(self._db.get_default_dsn_value('lch'))
             if lstr != db_lstr:
                 raise ValueError('Given length = %s, but DB length = %s' % (lstr, db_lstr))
 
