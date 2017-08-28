@@ -132,7 +132,8 @@ class OpAmpTwoStage(object):
         self._amp_info = None
 
     def design(self,
-               itarg_list,  # type: List[float]
+               i1_unit,  # type: List[float]
+               i1_min_size,  # type: int
                vg_list,  # type: List[float]
                vout_list,  # type: List[float]
                cpar1,  # type: float
@@ -149,6 +150,97 @@ class OpAmpTwoStage(object):
                pmos_input=True,  # type: bool
                max_ref_ratio=20,  # type: int
                ):
+        # type: (...) -> None
+
+        # binary search for minimum stage 1 current,
+        i1_size_iter = BinaryIterator(i1_min_size, None)
+        i1_size_opt, opt_info = None, None
+        while i1_size_iter.has_next():
+            i1_size = i1_size_iter.get_next()
+            print('trying i1_size = %d' % i1_size)
+            try:
+                self._design_with_itarg(i1_size, i1_unit, vg_list, vout_list, cpar1, cload,
+                                        f_unit, phase_margin, res_var, l, vstar_gm_min,
+                                        vstar_load_min, vds_tail_min, seg_gm_min,
+                                        vdd, pmos_input, max_ref_ratio)
+                success = True
+            except StageOneCurrentError:
+                success = False
+
+            if success:
+                print('success')
+                opt_info = self._amp_info
+                i1_size_opt = i1_size
+                i1_size_iter.down()
+            else:
+                print('fail')
+                i1_size_iter.up()
+
+        # linear search to find optimal scale2
+        scale2_int_max = int(opt_info['scale2'])
+        if scale2_int_max == opt_info['scale2']:
+            scale2_int_max -= 1
+
+        i1_size_min = last_i1_size = i1_size_opt
+        print('i1_size = %d, scale2 = %.4g' % (i1_size_opt, opt_info['scale2']))
+        for scale2_test in range(scale2_int_max, 0, -1):
+            i1_size_test = int(np.floor(i1_size_opt * (1 + opt_info['scale2']) / (1 + scale2_test)))
+            print('testing i1_size = %d, scale2 = %.4g' % (i1_size_test, scale2_test))
+            if i1_size_test <= i1_size_min or scale2_test == opt_info['scale2']:
+                print('out of bounds or already tested, skip')
+                continue
+            self._design_with_itarg(i1_size_test, i1_unit, vg_list, vout_list, cpar1, cload,
+                                    f_unit, phase_margin, res_var, l, vstar_gm_min,
+                                    vstar_load_min, vds_tail_min, seg_gm_min,
+                                    vdd, pmos_input, max_ref_ratio)
+
+            if self._amp_info['scale2'] <= scale2_test:
+                # found new minimum.  close in to find optimal i1 size
+                opt_info = self._amp_info
+                i1_size_opt = i1_size_test
+                print('update: i1_size = %d, scale2 = %.4g' % (i1_size_opt, opt_info['scale2']))
+                print('found new minimum, optimize')
+                i1_size_iter = BinaryIterator(last_i1_size + 1, i1_size_test)
+                while i1_size_iter.has_next():
+                    i1_size_cur_opt = i1_size_iter.get_next()
+                    print('testing i1_size = %d' % i1_size_cur_opt)
+                    self._design_with_itarg(i1_size_cur_opt, i1_unit, vg_list, vout_list, cpar1, cload,
+                                            f_unit, phase_margin, res_var, l, vstar_gm_min,
+                                            vstar_load_min, vds_tail_min, seg_gm_min,
+                                            vdd, pmos_input, max_ref_ratio)
+                    if self._amp_info['scale2'] <= opt_info['scale2']:
+
+                        opt_info = self._amp_info
+                        i1_size_opt = i1_size_cur_opt
+                        print('update: i1_size = %d, scale2 = %.4g' % (i1_size_opt, opt_info['scale2']))
+                        i1_size_iter.down()
+                    else:
+                        i1_size_iter.up()
+
+        self._amp_info = opt_info
+
+    def _design_with_itarg(self,
+                           i1_size,  # type: int
+                           i1_unit,  # type: List[float]
+                           vg_list,  # type: List[float]
+                           vout_list,  # type: List[float]
+                           cpar1,  # type: float
+                           cload,  # type: float
+                           f_unit,  # type: float
+                           phase_margin,  # type: float
+                           res_var,  # type: float
+                           l,  # type: float
+                           vstar_gm_min,  # type: float
+                           vstar_load_min,  # type: float
+                           vds_tail_min,  # type: float
+                           seg_gm_min,  # type: int
+                           vdd,  # type: float
+                           pmos_input,  # type: bool
+                           max_ref_ratio,  # type: int
+                           ):
+        # type: (...) -> None
+        itarg_list = [i1 * i1_size for i1 in i1_unit]
+
         if pmos_input:
             load_db = self._nch_db
             gm_db = self._pch_db
@@ -214,9 +306,9 @@ class OpAmpTwoStage(object):
                     }
 
         print('designing stage 2')
-        stage2_results = self.design_stage2(gm_db, load_db, vtail_list, vg_list, vmid_list, vout_list, vbias_list,
-                                            vb_gm, vb_load, cload, cpar1, w_dict, th_dict, stack_dict, seg_dict,
-                                            gm2_list, res_var, phase_margin, f_unit)
+        stage2_results = self._design_stage2(gm_db, load_db, vtail_list, vg_list, vmid_list, vout_list, vbias_list,
+                                             vb_gm, vb_load, cload, cpar1, w_dict, th_dict, stack_dict, seg_dict,
+                                             gm2_list, res_var, phase_margin, f_unit)
 
         scale2 = seg_dict['diode2'] / seg_dict['diode1']
         scaler = seg_dict['ref'] / seg_dict['tail1']
@@ -230,6 +322,7 @@ class OpAmpTwoStage(object):
         )
 
         self._amp_info = dict(
+            scale2=scale2,
             vtail=vtail_list,
             vmid=vmid_list,
             vbias=vbias_list,
@@ -257,9 +350,9 @@ class OpAmpTwoStage(object):
         # type: () -> Optional[Dict[str, Any]]
         return self._amp_info
 
-    def design_stage2(self, gm_db, load_db, vtail_list, vg_list, vmid_list, vout_list, vbias_list,
-                      vb_gm, vb_load, cload, cpar1, w_dict, th_dict, stack_dict, seg_dict, gm2_list,
-                      res_var, phase_margin, f_unit):
+    def _design_stage2(self, gm_db, load_db, vtail_list, vg_list, vmid_list, vout_list, vbias_list,
+                       vb_gm, vb_load, cload, cpar1, w_dict, th_dict, stack_dict, seg_dict, gm2_list,
+                       res_var, phase_margin, f_unit):
 
         seg_tail1 = seg_dict['tail1']
         seg_diode1 = seg_dict['diode1']
@@ -329,7 +422,7 @@ class OpAmpTwoStage(object):
 
     @classmethod
     def _get_stage2_ss(cls, gm2_list, gds2_list, c2_list, cg2_list, cload, seg_gcd, cur_size):
-        cur_gm2_list, cur_gds2_list, cur_c2_list, cur_cg2_list = [], [], [],  []
+        cur_gm2_list, cur_gds2_list, cur_c2_list, cur_cg2_list = [], [], [], []
         for gm2, gds2, c2, cg2 in zip(gm2_list, gds2_list, c2_list, cg2_list):
             cur_gm2_list.append(gm2 * cur_size / seg_gcd)
             cur_gds2_list.append(gds2 * cur_size / seg_gcd)
