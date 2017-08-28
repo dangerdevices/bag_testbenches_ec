@@ -99,6 +99,7 @@ class bag_testbenches_ec__amp_tb_ac_tran(Module):
 
         # setup bias voltages
         if vbias_dict:
+            vbias_dict = vbias_dict.copy()
             # make sure VDD is always included
             name = 'SUP'
             counter = 1
@@ -126,37 +127,3 @@ class bag_testbenches_ec__amp_tb_ac_tran(Module):
         self.replace_instance_master('XDUT', dut_lib, dut_cell, static=True)
         for term_name, net_name in dut_conns.items():
             self.reconnect_instance_terminal('XDUT', term_name, net_name)
-
-    def get_layout_params(self, **kwargs):
-        """Returns a dictionary with layout parameters.
-
-        This method computes the layout parameters used to generate implementation's
-        layout.  Subclasses should override this method if you need to run post-extraction
-        layout.
-
-        Parameters
-        ----------
-        kwargs :
-            any extra parameters you need to generate the layout parameters dictionary.
-            Usually you specify layout-specific parameters here, like metal layers of
-            input/output, customizable wire sizes, and so on.
-
-        Returns
-        -------
-        params : dict[str, any]
-            the layout parameters dictionary.
-        """
-        return {}
-
-    def get_layout_pin_mapping(self):
-        """Returns the layout pin mapping dictionary.
-
-        This method returns a dictionary used to rename the layout pins, in case they are different
-        than the schematic pins.
-
-        Returns
-        -------
-        pin_mapping : dict[str, str]
-            a dictionary from layout pin names to schematic pin names.
-        """
-        return {}

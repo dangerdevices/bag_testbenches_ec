@@ -36,8 +36,8 @@ class LoadDiodePFB(object):
         self._valid_widths = mos_db.width_list
         self._best_op = None
 
-    def design(self, itarg_list, vds2_list, vstar_min, l):
-        # type: (List[float], List[float], float, float) -> None
+    def design(self, itarg_list, vds2_list, vstar_min, l, stack_list=None):
+        # type: (List[float], List[float], float, float, Optional[List[int]]) -> None
         """Design the diode load.
 
         Parameters
@@ -50,6 +50,8 @@ class LoadDiodePFB(object):
             minimum V* of the diode.
         l : float
             channel length.
+        stack_list : Optional[List[int]]
+            list of valid stack numbers.
         """
         # simple error checking.
         if 'lch' in self._dsn_params:
@@ -60,16 +62,19 @@ class LoadDiodePFB(object):
             if lstr != db_lstr:
                 raise ValueError('Given length = %s, but DB length = %s' % (lstr, db_lstr))
 
+        if stack_list is None:
+            stack_list = self._stack_list
+
         vgs_idx = self._db.get_fun_arg_index('vgs')
 
-        num_stack = len(self._stack_list)
+        num_stack = len(stack_list)
 
         self._best_op = None
         best_score = None
         for intent in self._intent_list:
             for w in self._valid_widths:
                 for idx1 in range(num_stack):
-                    stack1 = self._stack_list[idx1]
+                    stack1 = stack_list[idx1]
                     self._db.set_dsn_params(w=w, intent=intent, stack=stack1)
                     ib1 = self._db.get_function_list('ibias')
                     gm1 = self._db.get_function_list('gm')
@@ -77,7 +82,7 @@ class LoadDiodePFB(object):
                     vgs1_min, vgs1_max = ib1[0].get_input_range(vgs_idx)
 
                     for idx2 in range(idx1, num_stack):
-                        stack2 = self._stack_list[idx2]
+                        stack2 = stack_list[idx2]
                         self._db.set_dsn_params(stack=stack2)
                         ib2 = self._db.get_function_list('ibias')
                         gm2 = self._db.get_function_list('gm')

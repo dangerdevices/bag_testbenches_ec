@@ -2,14 +2,18 @@
 
 """This module contains design algorithm for a traditional two stage operational amplifier."""
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple, Sequence
 
 import numpy as np
 import scipy.optimize as sciopt
+import scipy.interpolate as interp
 
+from bag.core import BagProject, Testbench
 from bag.math import gcd
+from bag.data.core import Waveform
 from bag.data.lti import LTICircuit, get_stability_margins, get_w_crossings, get_w_3db
 from bag.util.search import FloatBinaryIterator, BinaryIterator, minimize_cost_golden
+from bag.tech.core import SimulationManager
 
 from ckt_dsn_ec.mos.core import MOSDBDiscrete
 
@@ -149,6 +153,7 @@ class OpAmpTwoStage(object):
                vdd,  # type: float
                pmos_input=True,  # type: bool
                max_ref_ratio=20,  # type: int
+               load_stack_list=None,  # type: Optional[List[int]]
                ):
         # type: (...) -> None
 
@@ -162,7 +167,7 @@ class OpAmpTwoStage(object):
                 self._design_with_itarg(i1_size, i1_unit, vg_list, vout_list, cpar1, cload,
                                         f_unit, phase_margin, res_var, l, vstar_gm_min,
                                         vstar_load_min, vds_tail_min, seg_gm_min,
-                                        vdd, pmos_input, max_ref_ratio)
+                                        vdd, pmos_input, max_ref_ratio, load_stack_list)
                 success = True
             except StageOneCurrentError:
                 success = False
@@ -192,7 +197,7 @@ class OpAmpTwoStage(object):
             self._design_with_itarg(i1_size_test, i1_unit, vg_list, vout_list, cpar1, cload,
                                     f_unit, phase_margin, res_var, l, vstar_gm_min,
                                     vstar_load_min, vds_tail_min, seg_gm_min,
-                                    vdd, pmos_input, max_ref_ratio)
+                                    vdd, pmos_input, max_ref_ratio, load_stack_list)
 
             if self._amp_info['scale2'] <= scale2_test:
                 # found new minimum.  close in to find optimal i1 size
@@ -207,7 +212,7 @@ class OpAmpTwoStage(object):
                     self._design_with_itarg(i1_size_cur_opt, i1_unit, vg_list, vout_list, cpar1, cload,
                                             f_unit, phase_margin, res_var, l, vstar_gm_min,
                                             vstar_load_min, vds_tail_min, seg_gm_min,
-                                            vdd, pmos_input, max_ref_ratio)
+                                            vdd, pmos_input, max_ref_ratio, load_stack_list)
                     if self._amp_info['scale2'] <= opt_info['scale2']:
 
                         opt_info = self._amp_info
@@ -218,6 +223,7 @@ class OpAmpTwoStage(object):
                         i1_size_iter.up()
 
         self._amp_info = opt_info
+        self._amp_info['i1_size'] = i1_size_opt
 
     def _design_with_itarg(self,
                            i1_size,  # type: int
@@ -237,6 +243,7 @@ class OpAmpTwoStage(object):
                            vdd,  # type: float
                            pmos_input,  # type: bool
                            max_ref_ratio,  # type: int
+                           load_stack_list,  # type: Optional[List[int]]
                            ):
         # type: (...) -> None
         itarg_list = [i1 * i1_size for i1 in i1_unit]
@@ -260,7 +267,7 @@ class OpAmpTwoStage(object):
 
         # design load
         print('designing load')
-        load.design(itarg_list, vds2_list, vstar_load_min, l)
+        load.design(itarg_list, vds2_list, vstar_load_min, l, stack_list=load_stack_list)
         load_info = load.get_dsn_info()
         vgs_load_list = load_info['vgs']
         gds_load_list = load_info['gds1']
@@ -539,3 +546,213 @@ class OpAmpTwoStage(object):
         cir.add_vcvs(1, 'out', 'gnd', 'outp', 'outn')
 
         return cir
+
+
+class OpAmpTwoStageChar(SimulationManager):
+    def __init__(self, prj, spec_file):
+        # type: (Optional[BagProject], str) -> None
+        super(OpAmpTwoStageChar, self).__init__(prj, spec_file)
+
+    def get_layout_params(self, val_list):
+        # type: (Tuple[Any, ...]) -> Dict[str, Any]
+        lay_params = self.specs['layout_params'].copy()
+        for var, val in zip(self.swp_var_list, val_list):
+            lay_params[var] = val
+
+        return lay_params
+
+    def get_tb_sch_params(self, tb_type, val_list):
+        # type: (str, Tuple[Any, ...]) -> Dict[str, Any]
+        return self.specs[tb_type]['sch_params']
+
+    def configure_tb(self, tb_type, tb, val_list):
+        # type: (str, Testbench, Tuple[Any, ...]) -> None
+        tb_specs = self.specs[tb_type]
+        sim_envs = self.specs['sim_envs']
+        view_name = self.specs['view_name']
+        impl_lib = self.specs['impl_lib']
+        dsn_name_base = self.specs['dsn_name_base']
+        tb_params_real = self.specs['feedback_params'].copy()
+
+        tb_params = tb_specs['tb_params']
+        dsn_name = self.get_instance_name(dsn_name_base, val_list)
+
+        tb.set_simulation_environments(sim_envs)
+        tb.set_simulation_view(impl_lib, dsn_name, view_name)
+
+        tb_params_real.update(tb_params)
+        for key, val in tb_params_real.items():
+            if isinstance(val, list):
+                tb.set_sweep_parameter(key, values=val)
+            else:
+                tb.set_parameter(key, val)
+
+    def verify(self, rfb, cfb, extract=True, gen_dsn=True):
+        tb_types = ['tb_dc', 'tb_ac']
+        for tb_type in tb_types:
+            tb_specs = self.specs[tb_type]
+            tb_specs['tb_params']['cfb'] = cfb
+            tb_specs['tb_params']['rfb'] = rfb
+
+        if gen_dsn:
+            self.create_designs(extract=extract)
+        else:
+            for tb_type in tb_types:
+                self.run_simulations(tb_type)
+
+            for val_list in self.get_combinations_iter():
+                self.process_dc_data(val_list)
+                self.process_ac_data(val_list)
+
+    def find_cfb(self, phase_margin, res_var, max_scale=2.0, num_pts=11, extract=True, gen_dsn=True):
+        tb_type = 'tb_ac'
+        feedback_params = self.specs['feedback_params']
+        tb_ac_specs = self.specs[tb_type]
+
+        rfb0 = feedback_params['rfb']
+        cfb0 = feedback_params['cfb']
+        # noinspection PyUnresolvedReferences
+        cfb_list = np.linspace(cfb0, cfb0 * max_scale, num_pts).tolist()
+        tb_ac_specs['tb_params']['cfb'] = cfb_list
+        tb_ac_specs['tb_params']['rfb'] = rfb0 * (1 - res_var)
+
+        if gen_dsn:
+            self.create_designs(tb_type=tb_type, extract=extract)
+        else:
+            self.run_simulations(tb_type)
+
+        return self.process_cfb_data(phase_margin)
+
+    def process_dc_data(self, val_list):
+        tb_type = 'tb_dc'
+        axis_names = ['corner', 'voutref']
+        dsn_name_base = self.specs['dsn_name_base']
+
+        dsn_name = self.get_instance_name(dsn_name_base, val_list)
+
+        results = self.get_sim_results(tb_type, val_list)
+        corner_list = results['corner']
+        corner_sort_arg = np.argsort(corner_list)  # type: Sequence[int]
+        corner_list = corner_list[corner_sort_arg].tolist()
+
+        sweep_vars = results['sweep_params']['vout']
+        order = [sweep_vars.index(name) for name in axis_names]
+        vout_data = np.transpose(results['vout'], axes=order)
+        vin_data = np.transpose(results['vin'], axes=order)
+
+        gain_list = []
+        for corner_idx in corner_sort_arg:
+            vout_vec = vout_data[corner_idx, :]
+            vin_vec = vin_data[corner_idx, :]
+            vin_arg = np.argsort(vin_vec)
+            cur_vin = vin_vec[vin_arg]
+            cur_vout = vout_vec[vin_arg]
+
+            vout_fun = interp.InterpolatedUnivariateSpline(cur_vin, cur_vout)
+            vout_diff_fun = vout_fun.derivative(1)
+            gain_list.append(vout_diff_fun([0]))
+
+        gain_str = ', '.join(('%.4g' % gain for gain in gain_list))
+
+        print('dsn=%s, gain=[%s]' % (dsn_name, gain_str))
+
+        return corner_list, gain_list
+
+    def process_ac_data(self, val_list):
+        tb_type = 'tb_ac'
+        axis_names = ['corner', 'freq']
+        dsn_name_base = self.specs['dsn_name_base']
+
+        dsn_name = self.get_instance_name(dsn_name_base, val_list)
+
+        results = self.get_sim_results(tb_type, val_list)
+        corner_list = results['corner']
+        corner_sort_arg = np.argsort(corner_list)  # type: Sequence[int]
+        corner_list = corner_list[corner_sort_arg].tolist()
+
+        # rearrange array axis
+        sweep_vars = results['sweep_params']['vout_ac']
+        order = [sweep_vars.index(name) for name in axis_names]
+        vout_data = np.transpose(results['vout_ac'], axes=order)
+
+        # determine minimum cfb
+        freq_vec = results['freq']
+        f_unity_list, pm_list = [], []
+        for corner_idx in corner_sort_arg:
+            vout_vec = vout_data[corner_idx, :]
+            f_unity, pm = self._get_ac_info(freq_vec, vout_vec)
+            f_unity_list.append(f_unity)
+            pm_list.append(pm)
+
+        f_unity_str = ', '.join(('%.4g' % f_unity for f_unity in f_unity_list))
+        pm_str = ', '.join(('%.4g' % pm for pm in pm_list))
+
+        print('dsn=%s, f_unity=[%s], pm=[%s]' % (dsn_name, f_unity_str, pm_str))
+
+        return corner_list, f_unity_list, pm_list
+
+    def process_cfb_data(self, phase_margin):
+        tb_type = 'tb_ac'
+        dsn_name_base = self.specs['dsn_name_base']
+
+        ans = {}
+        axis_names = ['corner', 'cfb', 'freq']
+        corner_list = None
+        corner_sort_arg = None  # type: Sequence[int]
+        for val_list in self.get_combinations_iter():
+            results = self.get_sim_results(tb_type, val_list)
+            dsn_name = self.get_instance_name(dsn_name_base, val_list)
+
+            # get corner list
+            if corner_list is None:
+                corner_list = results['corner']
+                corner_sort_arg = np.argsort(corner_list)  # type: Sequence[int]
+                corner_list = corner_list[corner_sort_arg].tolist()
+
+            # rearrange array axis
+            sweep_vars = results['sweep_params']['vout_ac']
+            order = [sweep_vars.index(name) for name in axis_names]
+            vout_data = np.transpose(results['vout_ac'], axes=order)
+
+            # determine minimum cfb
+            cfb_vec = results['cfb']
+            freq_vec = results['freq']
+            cfb_idx_min = 0
+            for corner_idx in corner_sort_arg:
+                bin_iter = BinaryIterator(cfb_idx_min, cfb_vec.size)
+                while bin_iter.has_next():
+                    cur_cfb_idx = bin_iter.get_next()
+                    vout_vec = vout_data[corner_idx, cur_cfb_idx, :]
+                    _, pm = self._get_ac_info(freq_vec, vout_vec)
+                    if pm >= phase_margin:
+                        bin_iter.save()
+                        bin_iter.down()
+                    else:
+                        bin_iter.up()
+                cfb_idx_min = bin_iter.get_last_save()
+                if cfb_idx_min is None:
+                    # No solution; cannot make amplifier stable
+                    break
+
+            if cfb_idx_min is None:
+                ans[dsn_name] = None
+                print('dsn = %s, cfb = None' % dsn_name)
+            else:
+                ans[dsn_name] = cfb_vec[cfb_idx_min]
+                print('dsn = %s, cfb = %.4g' % (dsn_name, cfb_vec[cfb_idx_min]))
+
+        return ans
+
+    @classmethod
+    def _get_ac_info(cls, freq_vec, vout_vec, lf_tol=1e-6):
+        xvec = np.log10(freq_vec)
+        mag_vec = np.log10(np.abs(vout_vec))
+        phase_vec = np.rad2deg(np.unwrap(np.angle(vout_vec)))
+        mag_wv = Waveform(xvec, mag_vec, lf_tol)
+        phase_wv = Waveform(xvec, phase_vec, lf_tol)
+
+        lf_unity = mag_wv.get_crossing(0)
+        phase0 = phase_wv(xvec[0])
+        phase = phase_wv(lf_unity)
+
+        return 10.0**lf_unity, 180 - (phase0 - phase)

@@ -34,17 +34,17 @@ from bag import float_to_si_string
 from bag.design import Module
 
 
-yaml_file = pkg_resources.resource_filename(__name__, os.path.join('netlist_info', 'amp_tb_dc.yaml'))
+yaml_file = pkg_resources.resource_filename(__name__, os.path.join('netlist_info', 'amp_tb_ac.yaml'))
 
 
 # noinspection PyPep8Naming
-class bag_testbenches_ec__amp_tb_dc(Module):
-    """Module for library bag_testbenches_ec cell amp_tb_dc.
+class bag_testbenches_ec__amp_tb_ac(Module):
+    """Module for library bag_testbenches_ec cell amp_tb_ac.
 
     Fill in high level description here.
     """
 
-    param_list = ['dut_lib', 'dut_cell', 'dut_conns', 'vbias_dict', 'ibias_dict']
+    param_list = ['dut_lib', 'dut_cell', 'dut_conns', 'vbias_dict', 'ibias_dict', 'no_cload']
 
     def __init__(self, bag_config, parent=None, prj=None, **kwargs):
         Module.__init__(self, bag_config, yaml_file, parent=parent, prj=prj, **kwargs)
@@ -67,7 +67,8 @@ class bag_testbenches_ec__amp_tb_dc(Module):
         for inst, val in zip(self.instances[inst_name], val_list):
             inst.parameters[param_name] = val
 
-    def design(self, dut_lib='', dut_cell='', dut_conns=None, vbias_dict=None, ibias_dict=None):
+    def design(self, dut_lib='', dut_cell='', dut_conns=None,
+               vbias_dict=None, ibias_dict=None, no_cload=False):
         """To be overridden by subclasses to design this module.
 
         This method should fill in values for all parameters in
@@ -98,8 +99,8 @@ class bag_testbenches_ec__amp_tb_dc(Module):
 
         # setup bias voltages
         if vbias_dict:
-            # make sure VDD is always included
             vbias_dict = vbias_dict.copy()
+            # make sure VDD is always included
             name = 'SUP'
             counter = 1
             while name in vbias_dict:
@@ -115,41 +116,11 @@ class bag_testbenches_ec__amp_tb_dc(Module):
         else:
             self._generate_biases(ibias_dict, 'I%s', 'IBIAS', 'idc')
 
+        # delete load cap if needed
+        if no_cload:
+            self.delete_instance('CLOAD')
+
         # setup DUT
         self.replace_instance_master('XDUT', dut_lib, dut_cell, static=True)
         for term_name, net_name in dut_conns.items():
             self.reconnect_instance_terminal('XDUT', term_name, net_name)
-
-    def get_layout_params(self, **kwargs):
-        """Returns a dictionary with layout parameters.
-
-        This method computes the layout parameters used to generate implementation's
-        layout.  Subclasses should override this method if you need to run post-extraction
-        layout.
-
-        Parameters
-        ----------
-        kwargs :
-            any extra parameters you need to generate the layout parameters dictionary.
-            Usually you specify layout-specific parameters here, like metal layers of
-            input/output, customizable wire sizes, and so on.
-
-        Returns
-        -------
-        params : dict[str, any]
-            the layout parameters dictionary.
-        """
-        return {}
-
-    def get_layout_pin_mapping(self):
-        """Returns the layout pin mapping dictionary.
-
-        This method returns a dictionary used to rename the layout pins, in case they are different
-        than the schematic pins.
-
-        Returns
-        -------
-        pin_mapping : dict[str, str]
-            a dictionary from layout pin names to schematic pin names.
-        """
-        return {}

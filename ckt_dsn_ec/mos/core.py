@@ -72,6 +72,10 @@ class MOSCharSS(SimulationManager):
 
         return lay_params
 
+    def get_tb_sch_params(self, tb_type, val_list):
+        # type: (str, Tuple[Any, ...]) -> Dict[str, Any]
+        return {}
+
     def get_default_dsn_value(self, name):
         # type: (str) -> Any
         """Returns default design parameter value."""
