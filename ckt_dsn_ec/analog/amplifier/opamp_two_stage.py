@@ -552,6 +552,12 @@ class OpAmpTwoStageChar(SimulationManager):
     def __init__(self, prj, spec_file):
         # type: (Optional[BagProject], str) -> None
         super(OpAmpTwoStageChar, self).__init__(prj, spec_file)
+        combo_list = list(self.get_combinations_iter())
+
+        if len(combo_list) != 1:
+            raise ValueError('This characterization class does not support sweeping design parameters.')
+
+        self._val_list = combo_list[0]
 
     def get_layout_params(self, val_list):
         # type: (Tuple[Any, ...]) -> Dict[str, Any]
@@ -587,23 +593,6 @@ class OpAmpTwoStageChar(SimulationManager):
             else:
                 tb.set_parameter(key, val)
 
-    def verify(self, rfb, cfb, extract=True, gen_dsn=True):
-        tb_types = ['tb_dc', 'tb_ac']
-        for tb_type in tb_types:
-            tb_specs = self.specs[tb_type]
-            tb_specs['tb_params']['cfb'] = cfb
-            tb_specs['tb_params']['rfb'] = rfb
-
-        if gen_dsn:
-            self.create_designs(extract=extract)
-        else:
-            for tb_type in tb_types:
-                self.run_simulations(tb_type)
-
-            for val_list in self.get_combinations_iter():
-                self.process_dc_data(val_list)
-                self.process_ac_data(val_list)
-
     def find_cfb(self, phase_margin, res_var, max_scale=2.0, num_pts=11, extract=True, gen_dsn=True):
         tb_type = 'tb_ac'
         feedback_params = self.specs['feedback_params']
@@ -621,7 +610,17 @@ class OpAmpTwoStageChar(SimulationManager):
         else:
             self.run_simulations(tb_type)
 
-        return self.process_cfb_data(phase_margin)
+        # determine Cfb that stabilizes amplifier
+        cfb = self.find_min_cfb(phase_margin)
+
+        # get actual performace
+        tb_ac_specs['tb_params']['cfb'] = cfb
+        tb_ac_specs['tb_params']['rfb'] = rfb0
+
+        self.run_simulations(tb_type)
+        corner_list, f_unity_list, pm_list = self.process_ac_data(self._val_list)
+
+        return cfb, corner_list, f_unity_list, pm_list
 
     def process_dc_data(self, val_list):
         tb_type = 'tb_dc'
@@ -691,57 +690,50 @@ class OpAmpTwoStageChar(SimulationManager):
 
         return corner_list, f_unity_list, pm_list
 
-    def process_cfb_data(self, phase_margin):
+    def find_min_cfb(self, phase_margin):
         tb_type = 'tb_ac'
+        axis_names = ['corner', 'cfb', 'freq']
         dsn_name_base = self.specs['dsn_name_base']
 
-        ans = {}
-        axis_names = ['corner', 'cfb', 'freq']
-        corner_list = None
-        corner_sort_arg = None  # type: Sequence[int]
-        for val_list in self.get_combinations_iter():
-            results = self.get_sim_results(tb_type, val_list)
-            dsn_name = self.get_instance_name(dsn_name_base, val_list)
+        dsn_name = self.get_instance_name(dsn_name_base, self._val_list)
 
-            # get corner list
-            if corner_list is None:
-                corner_list = results['corner']
-                corner_sort_arg = np.argsort(corner_list)  # type: Sequence[int]
-                corner_list = corner_list[corner_sort_arg].tolist()
+        results = self.get_sim_results(tb_type, self._val_list)
+        corner_list = results['corner']
+        corner_sort_arg = np.argsort(corner_list)  # type: Sequence[int]
 
-            # rearrange array axis
-            sweep_vars = results['sweep_params']['vout_ac']
-            order = [sweep_vars.index(name) for name in axis_names]
-            vout_data = np.transpose(results['vout_ac'], axes=order)
+        # rearrange array axis
+        sweep_vars = results['sweep_params']['vout_ac']
+        order = [sweep_vars.index(name) for name in axis_names]
+        vout_data = np.transpose(results['vout_ac'], axes=order)
 
-            # determine minimum cfb
-            cfb_vec = results['cfb']
-            freq_vec = results['freq']
-            cfb_idx_min = 0
-            for corner_idx in corner_sort_arg:
-                bin_iter = BinaryIterator(cfb_idx_min, cfb_vec.size)
-                while bin_iter.has_next():
-                    cur_cfb_idx = bin_iter.get_next()
-                    vout_vec = vout_data[corner_idx, cur_cfb_idx, :]
-                    _, pm = self._get_ac_info(freq_vec, vout_vec)
-                    if pm >= phase_margin:
-                        bin_iter.save()
-                        bin_iter.down()
-                    else:
-                        bin_iter.up()
-                cfb_idx_min = bin_iter.get_last_save()
-                if cfb_idx_min is None:
-                    # No solution; cannot make amplifier stable
-                    break
-
+        # determine minimum cfb
+        cfb_vec = results['cfb']
+        freq_vec = results['freq']
+        cfb_idx_min = 0
+        for corner_idx in corner_sort_arg:
+            bin_iter = BinaryIterator(cfb_idx_min, cfb_vec.size)
+            while bin_iter.has_next():
+                cur_cfb_idx = bin_iter.get_next()
+                vout_vec = vout_data[corner_idx, cur_cfb_idx, :]
+                _, pm = self._get_ac_info(freq_vec, vout_vec)
+                if pm >= phase_margin:
+                    bin_iter.save()
+                    bin_iter.down()
+                else:
+                    bin_iter.up()
+            cfb_idx_min = bin_iter.get_last_save()
             if cfb_idx_min is None:
-                ans[dsn_name] = None
-                print('dsn = %s, cfb = None' % dsn_name)
-            else:
-                ans[dsn_name] = cfb_vec[cfb_idx_min]
-                print('dsn = %s, cfb = %.4g' % (dsn_name, cfb_vec[cfb_idx_min]))
+                # No solution; cannot make amplifier stable
+                break
 
-        return ans
+        if cfb_idx_min is None:
+            cfb = None
+            print('dsn = %s, cfb = None' % dsn_name)
+        else:
+            cfb = cfb_vec[cfb_idx_min]
+            print('dsn = %s, cfb = %.4g' % (dsn_name, cfb))
+
+        return cfb
 
     @classmethod
     def _get_ac_info(cls, freq_vec, vout_vec, lf_tol=1e-6):
