@@ -502,7 +502,7 @@ class OpAmpTwoStage(object):
         NOTE: This function assume phase of system for any miller cap value will not loop around 360,
         otherwise it may get the phase margin wrong.  This assumption should be valid for this op amp.
         """
-        gz_worst = min(gm2_list)
+        gz_worst = float(min(gm2_list))
         gz_nom = gz_worst * (1 - res_var)
         # find maximum Cf needed to stabilize all corners
         cf_min = cap_min
@@ -648,7 +648,7 @@ class OpAmpTwoStageChar(SimulationManager):
             else:
                 tb.set_parameter(key, val)
 
-    def find_cfb(self, max_scale=2.0, num_pts=11, extract=True, gen_dsn=True):
+    def find_cfb(self, min_scale=1.0, max_scale=2.0, num_pts=11, extract=True, gen_dsn=True):
         tb_type = 'tb_ac'
         feedback_params = self.specs['feedback_params']
         tb_ac_specs = self.specs[tb_type]
@@ -660,7 +660,7 @@ class OpAmpTwoStageChar(SimulationManager):
         rfb0 = feedback_params['rfb']
         cfb0 = feedback_params['cfb']
         # noinspection PyUnresolvedReferences
-        cfb_list = np.linspace(cfb0, cfb0 * max_scale, num_pts).tolist()
+        cfb_list = np.linspace(cfb0 * min_scale, cfb0 * max_scale, num_pts).tolist()
         tb_ac_specs['tb_params']['cfb'] = cfb_list
         tb_ac_specs['tb_params']['rfb'] = rfb0 * (1 - res_var)
 
@@ -677,18 +677,18 @@ class OpAmpTwoStageChar(SimulationManager):
         tb_ac_specs['tb_params']['rfb'] = rfb0
 
         self.run_simulations(tb_type)
-        corner_list, f_unity_list, pm_list = self.process_ac_data(self._val_list)
+        corner_list, f_unity_list, pm_list = self.process_ac_data()
 
         return cfb, corner_list, f_unity_list, pm_list
 
-    def process_dc_data(self, val_list):
+    def process_dc_data(self):
         tb_type = 'tb_dc'
         axis_names = ['corner', 'voutref']
         dsn_name_base = self.specs['dsn_name_base']
 
-        dsn_name = self.get_instance_name(dsn_name_base, val_list)
+        dsn_name = self.get_instance_name(dsn_name_base, self._val_list)
 
-        results = self.get_sim_results(tb_type, val_list)
+        results = self.get_sim_results(tb_type, self._val_list)
         corner_list = results['corner']
         corner_sort_arg = np.argsort(corner_list)  # type: Sequence[int]
         corner_list = corner_list[corner_sort_arg].tolist()
@@ -716,14 +716,14 @@ class OpAmpTwoStageChar(SimulationManager):
 
         return corner_list, gain_list
 
-    def process_ac_data(self, val_list):
+    def process_ac_data(self):
         tb_type = 'tb_ac'
         axis_names = ['corner', 'freq']
         dsn_name_base = self.specs['dsn_name_base']
 
-        dsn_name = self.get_instance_name(dsn_name_base, val_list)
+        dsn_name = self.get_instance_name(dsn_name_base, self._val_list)
 
-        results = self.get_sim_results(tb_type, val_list)
+        results = self.get_sim_results(tb_type, self._val_list)
         corner_list = results['corner']
         corner_sort_arg = np.argsort(corner_list)  # type: Sequence[int]
         corner_list = corner_list[corner_sort_arg].tolist()
