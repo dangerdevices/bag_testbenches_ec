@@ -4,6 +4,8 @@
 
 from typing import List, Optional, Dict, Any, Tuple, Sequence
 
+from copy import deepcopy
+
 import numpy as np
 import scipy.optimize as sciopt
 import scipy.interpolate as interp
@@ -147,7 +149,7 @@ class OpAmpTwoStage(object):
                res_var,  # type: float
                l,  # type: float
                vstar_gm_min,  # type: float
-               vstar_load_min,  # type: float
+               ft_load_scale,  # type: float
                vds_tail_min,  # type: float
                seg_gm_min,  # type: int
                vdd,  # type: float
@@ -166,10 +168,11 @@ class OpAmpTwoStage(object):
             try:
                 self._design_with_itarg(i1_size, i1_unit, vg_list, vout_list, cpar1, cload,
                                         f_unit, phase_margin, res_var, l, vstar_gm_min,
-                                        vstar_load_min, vds_tail_min, seg_gm_min,
+                                        ft_load_scale, vds_tail_min, seg_gm_min,
                                         vdd, pmos_input, max_ref_ratio, load_stack_list)
                 success = True
-            except StageOneCurrentError:
+            except StageOneCurrentError as err:
+                print(err)
                 success = False
 
             if success:
@@ -178,7 +181,6 @@ class OpAmpTwoStage(object):
                 i1_size_opt = i1_size
                 i1_size_iter.down()
             else:
-                print('fail')
                 i1_size_iter.up()
 
         # linear search to find optimal scale2
@@ -186,44 +188,49 @@ class OpAmpTwoStage(object):
         if scale2_int_max == opt_info['scale2']:
             scale2_int_max -= 1
 
-        i1_size_min = last_i1_size = i1_size_opt
+        last_i1_size = i1_size_opt
         print('i1_size = %d, scale2 = %.4g' % (i1_size_opt, opt_info['scale2']))
         for scale2_test in range(scale2_int_max, 0, -1):
             i1_size_test = int(np.floor(i1_size_opt * (1 + opt_info['scale2']) / (1 + scale2_test)))
-            print('testing i1_size = %d, scale2 = %.4g' % (i1_size_test, scale2_test))
-            if i1_size_test <= i1_size_min or scale2_test == opt_info['scale2']:
-                print('out of bounds or already tested, skip')
+            if i1_size_test <= last_i1_size or scale2_test == opt_info['scale2']:
                 continue
-            self._design_with_itarg(i1_size_test, i1_unit, vg_list, vout_list, cpar1, cload,
-                                    f_unit, phase_margin, res_var, l, vstar_gm_min,
-                                    vstar_load_min, vds_tail_min, seg_gm_min,
-                                    vdd, pmos_input, max_ref_ratio, load_stack_list)
-
+            print('testing i1_size = %d, scale2 = %.4g' % (i1_size_test, scale2_test))
+            try:
+                self._design_with_itarg(i1_size_test, i1_unit, vg_list, vout_list, cpar1, cload,
+                                        f_unit, phase_margin, res_var, l, vstar_gm_min,
+                                        ft_load_scale, vds_tail_min, seg_gm_min,
+                                        vdd, pmos_input, max_ref_ratio, load_stack_list)
+            except StageOneCurrentError:
+                continue
             if self._amp_info['scale2'] <= scale2_test:
                 # found new minimum.  close in to find optimal i1 size
                 opt_info = self._amp_info
                 i1_size_opt = i1_size_test
                 print('update: i1_size = %d, scale2 = %.4g' % (i1_size_opt, opt_info['scale2']))
-                print('found new minimum, optimize')
                 i1_size_iter = BinaryIterator(last_i1_size + 1, i1_size_test)
                 while i1_size_iter.has_next():
                     i1_size_cur_opt = i1_size_iter.get_next()
                     print('testing i1_size = %d' % i1_size_cur_opt)
-                    self._design_with_itarg(i1_size_cur_opt, i1_unit, vg_list, vout_list, cpar1, cload,
-                                            f_unit, phase_margin, res_var, l, vstar_gm_min,
-                                            vstar_load_min, vds_tail_min, seg_gm_min,
-                                            vdd, pmos_input, max_ref_ratio, load_stack_list)
-                    if self._amp_info['scale2'] <= opt_info['scale2']:
+                    try:
+                        self._design_with_itarg(i1_size_cur_opt, i1_unit, vg_list, vout_list, cpar1, cload,
+                                                f_unit, phase_margin, res_var, l, vstar_gm_min,
+                                                ft_load_scale, vds_tail_min, seg_gm_min,
+                                                vdd, pmos_input, max_ref_ratio, load_stack_list)
 
-                        opt_info = self._amp_info
-                        i1_size_opt = i1_size_cur_opt
-                        print('update: i1_size = %d, scale2 = %.4g' % (i1_size_opt, opt_info['scale2']))
-                        i1_size_iter.down()
-                    else:
+                        if self._amp_info['scale2'] <= opt_info['scale2']:
+                            opt_info = self._amp_info
+                            i1_size_opt = i1_size_cur_opt
+                            print('update: i1_size = %d, scale2 = %.4g' % (i1_size_opt, opt_info['scale2']))
+                            i1_size_iter.down()
+                        else:
+                            i1_size_iter.up()
+
+                    except StageOneCurrentError:
                         i1_size_iter.up()
 
+            last_i1_size = i1_size_test
+
         self._amp_info = opt_info
-        self._amp_info['i1_size'] = i1_size_opt
 
     def _design_with_itarg(self,
                            i1_size,  # type: int
@@ -237,7 +244,7 @@ class OpAmpTwoStage(object):
                            res_var,  # type: float
                            l,  # type: float
                            vstar_gm_min,  # type: float
-                           vstar_load_min,  # type: float
+                           ft_load_scale,  # type: float
                            vds_tail_min,  # type: float
                            seg_gm_min,  # type: int
                            vdd,  # type: float
@@ -267,7 +274,7 @@ class OpAmpTwoStage(object):
 
         # design load
         print('designing load')
-        load.design(itarg_list, vds2_list, vstar_load_min, l, stack_list=load_stack_list)
+        load.design(itarg_list, vds2_list, ft_load_scale * f_unit, l, stack_list=load_stack_list)
         load_info = load.get_dsn_info()
         vgs_load_list = load_info['vgs']
         gds_load_list = load_info['gds1']
@@ -307,7 +314,6 @@ class OpAmpTwoStage(object):
         stack_dict = {'tail': stack_gm, 'in': stack_gm, 'diode': stack_diode, 'ngm': stack_ngm}
         seg_dict = {'tail1': seg_gm,
                     'in': seg_gm,
-                    'ref': max(2, -((-seg_gm // max_ref_ratio) // 2) * 2),
                     'diode1': seg_diode,
                     'ngm1': seg_ngm,
                     }
@@ -315,7 +321,7 @@ class OpAmpTwoStage(object):
         print('designing stage 2')
         stage2_results = self._design_stage2(gm_db, load_db, vtail_list, vg_list, vmid_list, vout_list, vbias_list,
                                              vb_gm, vb_load, cload, cpar1, w_dict, th_dict, stack_dict, seg_dict,
-                                             gm2_list, res_var, phase_margin, f_unit)
+                                             gm2_list, res_var, phase_margin, f_unit, max_ref_ratio)
 
         scale2 = seg_dict['diode2'] / seg_dict['diode1']
         scaler = seg_dict['ref'] / seg_dict['tail1']
@@ -329,7 +335,9 @@ class OpAmpTwoStage(object):
         )
 
         self._amp_info = dict(
+            i1_size=i1_size,
             scale2=scale2,
+            scaler=scaler,
             vtail=vtail_list,
             vmid=vmid_list,
             vbias=vbias_list,
@@ -345,7 +353,7 @@ class OpAmpTwoStage(object):
             cfb=stage2_results['cf'],
             gain_tot=stage2_results['gain'],
             f_3db=stage2_results['f_3db'],
-            f_unity=stage2_results['f_unity'],
+            f_unit=stage2_results['f_unity'],
             phase_margin=stage2_results['phase_margin'],
 
             layout_info=layout_info,
@@ -357,9 +365,52 @@ class OpAmpTwoStage(object):
         # type: () -> Optional[Dict[str, Any]]
         return self._amp_info
 
+    def get_specs_verification(self, top_specs):
+        # type: (Dict[str, Any]) -> Dict[str, Any]
+        top_specs = deepcopy(top_specs)
+        dsn_specs = top_specs['dsn_specs']
+
+        ibias = dsn_specs['i1_unit'][0] * self._amp_info['i1_size'] * self._amp_info['scaler']
+        vdd = dsn_specs['vdd']
+        vindc = dsn_specs['vg_list'][0]
+        voutdc = dsn_specs['vout_list'][0]
+        f_unit = dsn_specs['f_unit']
+        gain_max = max(self._amp_info['gain_tot'])
+        f_bw_log = int(np.floor(np.log10(f_unit / gain_max)))
+        f_unit_log = int(np.ceil(np.log10(f_unit)))
+
+        top_specs['layout_params'].update(self._amp_info['layout_info'])
+
+        top_specs['wrapper_params']['cload'] = dsn_specs['cload']
+        top_specs['wrapper_params']['vdd'] = vdd
+
+        top_specs['feedback_params']['cfb'] = self._amp_info['cfb']
+        top_specs['feedback_params']['rfb'] = self._amp_info['rfb']
+
+        top_specs['tb_dc']['tb_params']['vimax'] = vdd
+        top_specs['tb_dc']['tb_params']['vimin'] = -vdd
+        top_specs['tb_dc']['tb_params']['vindc'] = vindc
+        top_specs['tb_dc']['tb_params']['voutcm'] = voutdc
+        top_specs['tb_dc']['tb_params']['ibias'] = ibias
+        top_specs['tb_dc']['tb_params']['vdd'] = vdd
+        top_specs['tb_dc']['tb_params']['voutref'] = voutdc
+        top_specs['tb_dc']['tb_params']['vout_start'] = -vdd + 0.15
+        top_specs['tb_dc']['tb_params']['vout_stop'] = vdd - 0.15
+
+        top_specs['tb_ac']['tb_params']['vincm'] = vindc
+        top_specs['tb_ac']['tb_params']['voutcm'] = voutdc
+        top_specs['tb_ac']['tb_params']['ibias'] = ibias
+        top_specs['tb_ac']['tb_params']['vdd'] = vdd
+        top_specs['tb_ac']['tb_params']['vinac'] = 1.0
+        top_specs['tb_ac']['tb_params']['vindc'] = 0.0
+        top_specs['tb_ac']['tb_params']['fstart'] = 10 ** f_bw_log
+        top_specs['tb_ac']['tb_params']['fstop'] = 10 ** (f_unit_log + 1)
+
+        return top_specs
+
     def _design_stage2(self, gm_db, load_db, vtail_list, vg_list, vmid_list, vout_list, vbias_list,
                        vb_gm, vb_load, cload, cpar1, w_dict, th_dict, stack_dict, seg_dict, gm2_list,
-                       res_var, phase_margin, f_unit):
+                       res_var, phase_margin, f_unit, max_ref_ratio):
 
         seg_tail1 = seg_dict['tail1']
         seg_diode1 = seg_dict['diode1']
@@ -384,16 +435,18 @@ class OpAmpTwoStage(object):
             cur_gm2_list = [gm2 * cur_scale2 for gm2 in gm2_list]
             ac_results = self._find_rz_cf(gm_db, load_db, vtail_list, vg_list, vmid_list, vout_list, vbias_list,
                                           vb_gm, vb_load, cload, cpar1, w_dict, th_dict, stack_dict, seg_dict,
-                                          cur_scale2, cur_gm2_list, res_var, phase_margin)
+                                          cur_gm2_list, res_var, phase_margin)
 
             return ac_results
 
         def funity_fun(cur_size):
-            fu_list = ac_results_fun(cur_size)[0]
+            ac_results_tmp = ac_results_fun(cur_size)
+            fu_list = ac_results_tmp[0]
             if fu_list is None:
                 return -1
             # noinspection PyTypeChecker
-            return min(fu_list)
+            ans = min(fu_list)
+            return ans
 
         # find min_size such that amplifier is stable
         min_bin_iter = BinaryIterator(min_size, None)
@@ -409,15 +462,18 @@ class OpAmpTwoStage(object):
         min_result = minimize_cost_golden(funity_fun, f_unit, offset=min_bin_iter.get_last_save())
 
         if min_result.x is None:
-            raise StageOneCurrentError('Insufficient stage 1 current.  funity_max = %.4g' % min_result.vmax)
+            msg = 'Insufficient stage 1 current.  funity_max=%.4g'
+            raise StageOneCurrentError(msg % min_result.vmax)
 
         funity_list, rz_nom, cf_min, gain_list, f3db_list, pm_list = ac_results_fun(min_result.x)
 
         seg_tail2_tot = seg_dict['tail2']
         seg_tail2 = (seg_tail2_tot // 4) * 2
         seg_tailcm = seg_tail2_tot - seg_tail2
+        seg_tail_tot = 2 * (seg_dict['tail1'] + seg_tail2)
         seg_dict['tail2'] = seg_tail2
         seg_dict['tailcm'] = seg_tailcm
+        seg_dict['ref'] = max(2, -((-seg_tail_tot // max_ref_ratio) // 2) * 2)
         return dict(
             rz=rz_nom,
             cf=cf_min,
@@ -439,21 +495,21 @@ class OpAmpTwoStage(object):
         return cur_gm2_list, cur_gds2_list, cur_c2_list, cur_cg2_list
 
     def _find_rz_cf(self, gm_db, load_db, vtail_list, vg_list, vmid_list, vout_list, vbias_list,
-                    vb_gm, vb_load, cload, cpar1, w_dict, th_dict, stack_dict, seg_dict, scale2,
+                    vb_gm, vb_load, cload, cpar1, w_dict, th_dict, stack_dict, seg_dict,
                     gm2_list, res_var, phase_margin, cap_tol=1e-15, cap_step=10e-15, cap_min=1e-15, cap_max=1e-9):
         """Find minimum miller cap that stabilizes the system.
 
         NOTE: This function assume phase of system for any miller cap value will not loop around 360,
         otherwise it may get the phase margin wrong.  This assumption should be valid for this op amp.
         """
-        rz_worst = 1 / min(gm2_list)
-        rz_nom = rz_worst / (1 - res_var)
+        gz_worst = min(gm2_list)
+        gz_nom = gz_worst * (1 - res_var)
         # find maximum Cf needed to stabilize all corners
         cf_min = cap_min
         for env_idx, (vtail, vg, vmid, vout, vbias) in \
                 enumerate(zip(vtail_list, vg_list, vmid_list, vout_list, vbias_list)):
             cir = self._make_circuit(env_idx, gm_db, load_db, vtail, vg, vmid, vout, vbias, vb_gm, vb_load,
-                                     cload, cpar1, w_dict, th_dict, stack_dict, seg_dict, scale2, rz_worst)
+                                     cload, cpar1, w_dict, th_dict, stack_dict, seg_dict, gz_worst)
 
             bin_iter = FloatBinaryIterator(cf_min, None, cap_tol, search_step=cap_step)
             while bin_iter.has_next():
@@ -481,7 +537,7 @@ class OpAmpTwoStage(object):
         for env_idx, (vtail, vg, vmid, vout, vbias) in \
                 enumerate(zip(vtail_list, vg_list, vmid_list, vout_list, vbias_list)):
             cir = self._make_circuit(env_idx, gm_db, load_db, vtail, vg, vmid, vout, vbias, vb_gm, vb_load,
-                                     cload, cpar1, w_dict, th_dict, stack_dict, seg_dict, scale2, rz_nom)
+                                     cload, cpar1, w_dict, th_dict, stack_dict, seg_dict, gz_nom)
             cir.add_cap(cf_min, 'outp', 'xp')
             cir.add_cap(cf_min, 'outn', 'xn')
             num, den = cir.get_num_den('in', 'out')
@@ -492,15 +548,14 @@ class OpAmpTwoStage(object):
             funity_list.append(get_w_crossings(num, den)[0] / 2 / np.pi)
             pm_list.append(get_stability_margins(num, den)[0])
 
-        return funity_list, rz_nom, cf_min, gain_list, f3db_list, pm_list
+        return funity_list, 1 / gz_nom, cf_min, gain_list, f3db_list, pm_list
 
     @classmethod
     def _make_circuit(cls, env_idx, gm_db, load_db, vtail, vg, vmid, vout, vbias, vb_gm, vb_load, cload, cpar1,
-                      w_dict, th_dict, stack_dict, seg_dict, scale2, rz, neg_cap=False):
+                      w_dict, th_dict, stack_dict, seg_dict, gz, neg_cap=False, no_fb=False):
 
         cur_env = gm_db.env_list[env_idx]
         gm_db.set_dsn_params(w=w_dict['tail'], intent=th_dict['tail'], stack=stack_dict['tail'])
-        ref_params = gm_db.query(env=cur_env, vbs=0, vds=vbias - vb_gm, vgs=vbias - vb_gm)
         tail1_params = gm_db.query(env=cur_env, vbs=0, vds=vtail - vb_gm, vgs=vbias - vb_gm)
         tail2_params = gm_db.query(env=cur_env, vbs=0, vds=vout - vb_gm, vgs=vbias - vb_gm)
         gm_db.set_dsn_params(w=w_dict['in'], intent=th_dict['in'], stack=stack_dict['in'])
@@ -514,8 +569,7 @@ class OpAmpTwoStage(object):
 
         cir = LTICircuit()
         # stage 1
-        cir.add_transistor(ref_params, 'bias', 'bias', 'gnd', 'gnd', fg=seg_dict['ref'], neg_cap=neg_cap)
-        cir.add_transistor(tail1_params, 'tail', 'bias', 'gnd', 'gnd', fg=seg_dict['tail1'], neg_cap=neg_cap)
+        cir.add_transistor(tail1_params, 'tail', 'gnd', 'gnd', 'gnd', fg=seg_dict['tail1'], neg_cap=neg_cap)
         cir.add_transistor(gm1_params, 'midp', 'inn', 'tail', 'gnd', fg=seg_dict['in'], neg_cap=neg_cap)
         cir.add_transistor(gm1_params, 'midn', 'inp', 'tail', 'gnd', fg=seg_dict['in'], neg_cap=neg_cap)
         cir.add_transistor(diode1_params, 'midp', 'midp', 'gnd', 'gnd', fg=seg_dict['diode1'], neg_cap=neg_cap)
@@ -524,12 +578,12 @@ class OpAmpTwoStage(object):
         cir.add_transistor(ngm1_params, 'midp', 'midn', 'gnd', 'gnd', fg=seg_dict['ngm1'], neg_cap=neg_cap)
 
         # stage 2
-        cir.add_transistor(tail2_params, 'outp', 'bias', 'gnd', 'gnd', fg=seg_dict['tail2'] * scale2, neg_cap=neg_cap)
-        cir.add_transistor(tail2_params, 'outn', 'bias', 'gnd', 'gnd', fg=seg_dict['tail2'] * scale2, neg_cap=neg_cap)
-        cir.add_transistor(diode2_params, 'outp', 'midn', 'gnd', 'gnd', fg=seg_dict['diode2'] * scale2, neg_cap=neg_cap)
-        cir.add_transistor(diode2_params, 'outn', 'midp', 'gnd', 'gnd', fg=seg_dict['diode2'] * scale2, neg_cap=neg_cap)
-        cir.add_transistor(ngm2_params, 'outp', 'midn', 'gnd', 'gnd', fg=seg_dict['ngm2'] * scale2, neg_cap=neg_cap)
-        cir.add_transistor(ngm2_params, 'outn', 'midp', 'gnd', 'gnd', fg=seg_dict['ngm2'] * scale2, neg_cap=neg_cap)
+        cir.add_transistor(tail2_params, 'outp', 'gnd', 'gnd', 'gnd', fg=seg_dict['tail2'], neg_cap=neg_cap)
+        cir.add_transistor(tail2_params, 'outn', 'gnd', 'gnd', 'gnd', fg=seg_dict['tail2'], neg_cap=neg_cap)
+        cir.add_transistor(diode2_params, 'outp', 'midn', 'gnd', 'gnd', fg=seg_dict['diode2'], neg_cap=neg_cap)
+        cir.add_transistor(diode2_params, 'outn', 'midp', 'gnd', 'gnd', fg=seg_dict['diode2'], neg_cap=neg_cap)
+        cir.add_transistor(ngm2_params, 'outp', 'midn', 'gnd', 'gnd', fg=seg_dict['ngm2'], neg_cap=neg_cap)
+        cir.add_transistor(ngm2_params, 'outn', 'midp', 'gnd', 'gnd', fg=seg_dict['ngm2'], neg_cap=neg_cap)
 
         # parasitic cap
         cir.add_cap(cpar1, 'midp', 'gnd')
@@ -538,8 +592,9 @@ class OpAmpTwoStage(object):
         cir.add_cap(cload, 'outp', 'gnd')
         cir.add_cap(cload, 'outn', 'gnd')
         # feedback resistors
-        cir.add_res(rz, 'xp', 'midn')
-        cir.add_res(rz, 'xn', 'midp')
+        if not no_fb:
+            cir.add_conductance(gz, 'xp', 'midn')
+            cir.add_conductance(gz, 'xn', 'midp')
         # diff-to-single conversion
         cir.add_vcvs(0.5, 'inp', 'gnd', 'in', 'gnd')
         cir.add_vcvs(-0.5, 'inn', 'gnd', 'in', 'gnd')
@@ -593,10 +648,14 @@ class OpAmpTwoStageChar(SimulationManager):
             else:
                 tb.set_parameter(key, val)
 
-    def find_cfb(self, phase_margin, res_var, max_scale=2.0, num_pts=11, extract=True, gen_dsn=True):
+    def find_cfb(self, max_scale=2.0, num_pts=11, extract=True, gen_dsn=True):
         tb_type = 'tb_ac'
         feedback_params = self.specs['feedback_params']
         tb_ac_specs = self.specs[tb_type]
+        dsn_specs = self.specs['dsn_specs']
+
+        res_var = dsn_specs['res_var']
+        phase_margin = dsn_specs['phase_margin']
 
         rfb0 = feedback_params['rfb']
         cfb0 = feedback_params['cfb']

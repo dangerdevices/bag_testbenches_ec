@@ -4,6 +4,7 @@
 
 from typing import List, Tuple, Optional, Dict, Any
 
+import numpy as np
 import scipy.optimize as sciopt
 
 from bag import float_to_si_string
@@ -36,7 +37,7 @@ class LoadDiodePFB(object):
         self._valid_widths = mos_db.width_list
         self._best_op = None
 
-    def design(self, itarg_list, vds2_list, vstar_min, l, stack_list=None):
+    def design(self, itarg_list, vds2_list, ft_min, l, stack_list=None):
         # type: (List[float], List[float], float, float, Optional[List[int]]) -> None
         """Design the diode load.
 
@@ -46,8 +47,8 @@ class LoadDiodePFB(object):
             target single-ended bias current across simulation environments.
         vds2_list : List[float]
             list of op-amp stage 2 vds voltage across simulation environments.
-        vstar_min : float
-            minimum V* of the diode.
+        ft_min : float
+            minimum transit frequency of the composit transistor.
         l : float
             channel length.
         stack_list : Optional[List[int]]
@@ -79,6 +80,7 @@ class LoadDiodePFB(object):
                     ib1 = self._db.get_function_list('ibias')
                     gm1 = self._db.get_function_list('gm')
                     gds1 = self._db.get_function_list('gds')
+                    cd1 = self._db.get_function_list('cdd')
                     vgs1_min, vgs1_max = ib1[0].get_input_range(vgs_idx)
 
                     for idx2 in range(idx1, num_stack):
@@ -87,6 +89,7 @@ class LoadDiodePFB(object):
                         ib2 = self._db.get_function_list('ibias')
                         gm2 = self._db.get_function_list('gm')
                         gds2 = self._db.get_function_list('gds')
+                        cd2 = self._db.get_function_list('cdd')
                         vgs2_min, vgs2_max = ib2[0].get_input_range(vgs_idx)
 
                         vgs_min = max(vgs1_min, vgs2_min)
@@ -97,6 +100,7 @@ class LoadDiodePFB(object):
                             seg1 = seg1_iter.get_next()
 
                             all_neg = True
+                            one_pass = False
                             seg2_iter = BinaryIterator(0, None, step=2)
                             while seg2_iter.has_next():
                                 seg2 = seg2_iter.get_next()
@@ -110,8 +114,10 @@ class LoadDiodePFB(object):
                                     # too many fingers
                                     seg2_iter.down()
                                 else:
-                                    cur_score = self._compute_score(vstar_min, seg1, seg2, ib1, ib2,
-                                                                    gm1, gm2, gds1, gds2, vgs_list)
+                                    one_pass = True
+                                    cur_score = self._compute_score(ft_min, seg1, seg2, gm1, gm2, gds1, gds2,
+                                                                    cd1, cd2, vgs_list)
+
                                     if cur_score != -1:
                                         all_neg = False
 
@@ -127,10 +133,13 @@ class LoadDiodePFB(object):
 
                             if seg2_iter.get_last_save() is None:
                                 # no solution for seg2
-                                if all_neg:
+                                if all_neg and one_pass:
                                     # all solutions encountered have negative resistance,
                                     # this means we have insufficent number of diode fingers.
                                     seg1_iter.up()
+                                elif not one_pass:
+                                    # exit immediately with no solutions at all; too many fingers
+                                    seg1_iter.down()
                                 else:
                                     # all positive resistance solution break V*_min specs.
                                     # this means we have too many number of fingers.
@@ -170,22 +179,23 @@ class LoadDiodePFB(object):
 
         return vgs_list, 0
 
-    def _compute_score(self, vstar_min, scale1, scale2, ib1, ib2, gm1, gm2, gds1, gds2, vgs_list):
+    def _compute_score(self, ft_min, scale1, scale2, gm1, gm2, gds1, gds2,
+                       cd1, cd2, vgs_list):
         score = float('inf')
-        for fib1, fib2, fgm1, fgm2, fgds1, fgds2, vgs in zip(ib1, ib2, gm1, gm2, gds1, gds2, vgs_list):
+        for fgm1, fgm2, fgds1, fgds2, fcd1, fcd2, vgs in \
+                zip(gm1, gm2, gds1, gds2, cd1, cd2, vgs_list):
             arg = self._db.get_fun_arg(vbs=0, vds=vgs, vgs=vgs)
             cur_gm1 = scale1 * fgm1(arg)
             cur_gm2 = scale2 * fgm2(arg)
             cur_gds1 = scale1 * fgds1(arg)
             cur_gds2 = scale2 * fgds2(arg)
-            cur_ib1 = scale1 * fib1(arg)
-            cur_ib2 = scale2 * fib2(arg)
-            cur_vstar = 2 * (cur_ib1 + cur_ib2) / (cur_gm1 + cur_gm2)
+            cur_cd = scale1 * fcd1(arg) + scale2 * fcd2(arg)
+            cur_ft = (cur_gm1 + cur_gm1) / (2 * cur_cd) / 2 / np.pi
             cur_gds_tot = cur_gds1 + cur_gds2 + cur_gm1 - cur_gm2
             if cur_gm1 <= cur_gm2:
                 # negative resistance
                 return -1
-            if cur_vstar < vstar_min:
+            if cur_ft < ft_min:
                 # break minimum V* spec
                 return -2
 
@@ -212,13 +222,11 @@ class LoadDiodePFB(object):
         cg2 = self._db.get_function_list('cgg')
         cd2 = self._db.get_function_list('cdd')
 
-        vstar1_list, ctot1_list, gds1_list = [], [], []
-        vstar2_list, gm2_list, gds2_list, cgg2_list, cdd2_list = [], [], [], [], []
+        ctot1_list, gds1_list = [], []
+        vstar2_list, gm2_list, gds2_list, cgg2_list, cdd2_list, ft_list = [], [], [], [], [], []
         for ib1f, gm1f, gds1f, cg1f, cd1f, ib2f, gm2f, gds2f, cg2f, cd2f, vgs, vds2 in \
                 zip(ib1, gm1, gds1, cg1, cd1, ib2, gm2, gds2, cg2, cd2, vgs_list, vds2_list):
             arg1 = self._db.get_fun_arg(vbs=0, vds=vgs, vgs=vgs)
-            cur_ib1 = seg1 * ib1f(arg1)
-            cur_ib2 = seg2 * ib2f(arg1)
             cur_gm1 = seg1 * gm1f(arg1)
             cur_gm2 = seg2 * gm2f(arg1)
             cur_gds1 = seg1 * gds1f(arg1)
@@ -227,8 +235,9 @@ class LoadDiodePFB(object):
             cur_cg2 = seg2 * cg2f(arg1)
             cur_cd1 = seg1 * cd1f(arg1)
             cur_cd2 = seg2 * cd2f(arg1)
-            vstar1_list.append(2 * (cur_ib1 + cur_ib2) / (cur_gm1 + cur_gm2))
-            ctot1_list.append(cur_cg1 + cur_cg2 + cur_cd1 + cur_cd2)
+            cur_ctot = cur_cg1 + cur_cg2 + cur_cd1 + cur_cd2
+            ctot1_list.append(cur_ctot)
+            ft_list.append((cur_gm1 + cur_gm2) / (2 * (cur_cd1 + cur_cd2)) / 2 / np.pi)
             gds1_list.append(cur_gds1 + cur_gds2 + cur_gm1 - cur_gm2)
 
             arg2 = self._db.get_fun_arg(vbs=0, vds=vds2, vgs=vgs)
@@ -250,7 +259,7 @@ class LoadDiodePFB(object):
 
         return dict(
             vgs=vgs_list,
-            vstar1=vstar1_list,
+            ft=ft_list,
             ctot1=ctot1_list,
             gds1=gds1_list,
             vstar2=vstar2_list,
