@@ -681,12 +681,9 @@ class OpAmpTwoStageChar(SimulationManager):
 
         return cfb, corner_list, f_unity_list, pm_list
 
-    def process_dc_data(self):
+    def process_dc_data(self, plot=False):
         tb_type = 'tb_dc'
         axis_names = ['corner', 'voutref']
-        dsn_name_base = self.specs['dsn_name_base']
-
-        dsn_name = self.get_instance_name(dsn_name_base, self._val_list)
 
         results = self.get_sim_results(tb_type, self._val_list)
         corner_list = results['corner']
@@ -698,30 +695,44 @@ class OpAmpTwoStageChar(SimulationManager):
         vout_data = np.transpose(results['vout'], axes=order)
         vin_data = np.transpose(results['vin'], axes=order)
 
-        gain_list = []
+        gain_list, vout_vec_list, gain_vec_list, vin_vec_list = [], [], [], []
         for corner_idx in corner_sort_arg:
             vout_vec = vout_data[corner_idx, :]
             vin_vec = vin_data[corner_idx, :]
-            vin_arg = np.argsort(vin_vec)
-            cur_vin = vin_vec[vin_arg]
+            cur_vin, vin_arg = np.unique(vin_vec, return_index=True)
             cur_vout = vout_vec[vin_arg]
 
             vout_fun = interp.InterpolatedUnivariateSpline(cur_vin, cur_vout)
             vout_diff_fun = vout_fun.derivative(1)
             gain_list.append(vout_diff_fun([0]))
+            vin_vec_list.append(cur_vin)
+            vout_vec_list.append(cur_vout)
+            gain_vec_list.append(vout_diff_fun(cur_vin))
 
         gain_str = ', '.join(('%.4g' % gain for gain in gain_list))
+        print('gain=[%s]' % gain_str)
 
-        print('dsn=%s, gain=[%s]' % (dsn_name, gain_str))
+        if plot:
+            import matplotlib.pyplot as plt
+            plt.ticklabel_format(style='sci', axis='both', scilimits=(-1, 2))
+            f, (ax1, ax2) = plt.subplots(2, sharex='all')
+            ax1.set_title('Vout v.s. Vin')
+            ax1.set_ylabel('Vout (V)')
+            ax2.set_title('Gain v.s. Vin')
+            ax2.set_xlabel('Vin (V)')
+            for corner, vout_vec, gain_vec, vin_vec in \
+                    zip(corner_list, vout_vec_list, gain_vec_list, vin_vec_list):
+                ax1.plot(vin_vec, vout_vec, label=corner)
+                ax2.plot(vin_vec, gain_vec, label=corner)
+
+            ax1.legend()
+            ax2.legend()
 
         return corner_list, gain_list
 
-    def process_ac_data(self):
+    def process_ac_data(self, plot=False):
         tb_type = 'tb_ac'
         axis_names = ['corner', 'freq']
-        dsn_name_base = self.specs['dsn_name_base']
-
-        dsn_name = self.get_instance_name(dsn_name_base, self._val_list)
 
         results = self.get_sim_results(tb_type, self._val_list)
         corner_list = results['corner']
@@ -735,17 +746,35 @@ class OpAmpTwoStageChar(SimulationManager):
 
         # determine minimum cfb
         freq_vec = results['freq']
-        f_unity_list, pm_list = [], []
+        f_unity_list, pm_list, vout_vec_list = [], [], []
         for corner_idx in corner_sort_arg:
             vout_vec = vout_data[corner_idx, :]
             f_unity, pm = self._get_ac_info(freq_vec, vout_vec)
+            vout_vec_list.append(vout_vec)
             f_unity_list.append(f_unity)
             pm_list.append(pm)
 
         f_unity_str = ', '.join(('%.4g' % f_unity for f_unity in f_unity_list))
         pm_str = ', '.join(('%.4g' % pm for pm in pm_list))
+        print('f_unity=[%s]' % f_unity_str)
+        print('phase_margin=[%s]' % pm_str)
 
-        print('dsn=%s, f_unity=[%s], pm=[%s]' % (dsn_name, f_unity_str, pm_str))
+        if plot:
+            import matplotlib.pyplot as plt
+            plt.ticklabel_format(style='sci', axis='both', scilimits=(-1, 2))
+            f, (ax1, ax2) = plt.subplots(2, sharex='all')
+            ax1.set_title('Magnitude v.s. Frequency')
+            ax1.set_ylabel('Magnitude (dB)')
+            ax2.set_title('Phase v.s. Frequency')
+            ax2.set_xlabel('Phase (Degrees)')
+            for corner, vout_vec in zip(corner_list, vout_vec_list):
+                mag_vec = 20 * np.log10(np.abs(vout_vec))
+                ang_vec = np.rad2deg(np.unwrap(np.angle(vout_vec)))
+                ax1.semilogx(freq_vec, mag_vec, label=corner)
+                ax2.semilogx(freq_vec, ang_vec, label=corner)
+
+            ax1.legend()
+            ax2.legend()
 
         return corner_list, f_unity_list, pm_list
 
