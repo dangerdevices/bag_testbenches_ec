@@ -200,7 +200,8 @@ class OpAmpTwoStage(object):
                                         f_unit, phase_margin, res_var, l, vstar_gm_min,
                                         ft_load_scale, vds_tail_min, seg_gm_min,
                                         vdd, pmos_input, max_ref_ratio, load_stack_list)
-            except StageOneCurrentError:
+            except StageOneCurrentError as err:
+                print(err)
                 continue
             if self._amp_info['scale2'] <= scale2_test:
                 # found new minimum.  close in to find optimal i1 size
@@ -225,7 +226,8 @@ class OpAmpTwoStage(object):
                         else:
                             i1_size_iter.up()
 
-                    except StageOneCurrentError:
+                    except StageOneCurrentError as err:
+                        print(err)
                         i1_size_iter.up()
 
             last_i1_size = i1_size_test
