@@ -22,18 +22,6 @@ instances:
         direction: inputOutput
         net_name: "gnd!"
         num_bits: 1
-  VINAC:
-    lib_name: analogLib
-    cell_name: vdc
-    instpins:
-      PLUS:
-        direction: inputOutput
-        net_name: "vin"
-        num_bits: 1
-      MINUS:
-        direction: inputOutput
-        net_name: "vindc"
-        num_bits: 1
   VINDC:
     lib_name: analogLib
     cell_name: vdc
@@ -45,6 +33,18 @@ instances:
       MINUS:
         direction: inputOutput
         net_name: "VSS"
+        num_bits: 1
+  VINAC:
+    lib_name: analogLib
+    cell_name: vdc
+    instpins:
+      PLUS:
+        direction: inputOutput
+        net_name: "vin"
+        num_bits: 1
+      MINUS:
+        direction: inputOutput
+        net_name: "vindc"
         num_bits: 1
   VGND:
     lib_name: analogLib
