@@ -79,60 +79,10 @@ class bag_testbenches_ec__amp_tb_dc(Module):
                 raise ValueError('Parameter %s not specified.' % name)
             self.parameters[name] = local_dict[name]
 
-        # setup bias voltages
-        if vbias_dict:
-            vbias_dict = vbias_dict.copy()
-            # make sure VDD is always included
-            name = 'SUP'
-            counter = 1
-            while name in vbias_dict:
-                name = 'SUP%d' % counter
-                counter += 1
-
-            vbias_dict[name] = ['VDD', 'VSS', 'vdd']
-            self.design_dc_bias_sources(vbias_dict, 'VSUP', is_voltage=True)
-
-        # setup bias currents
-        if not ibias_dict:
-            self.delete_instance('IBIAS')
-        else:
-            self.design_dc_bias_sources(ibias_dict, 'IBIAS', is_voltage=False)
+        # setup bias sources
+        self.design_dc_bias_sources(vbias_dict, ibias_dict, 'VSUP', 'IBIAS', define_vdd=True)
 
         # setup DUT
         self.replace_instance_master('XDUT', dut_lib, dut_cell, static=True)
         for term_name, net_name in dut_conns.items():
             self.reconnect_instance_terminal('XDUT', term_name, net_name)
-
-    def get_layout_params(self, **kwargs):
-        """Returns a dictionary with layout parameters.
-
-        This method computes the layout parameters used to generate implementation's
-        layout.  Subclasses should override this method if you need to run post-extraction
-        layout.
-
-        Parameters
-        ----------
-        kwargs :
-            any extra parameters you need to generate the layout parameters dictionary.
-            Usually you specify layout-specific parameters here, like metal layers of
-            input/output, customizable wire sizes, and so on.
-
-        Returns
-        -------
-        params : dict[str, any]
-            the layout parameters dictionary.
-        """
-        return {}
-
-    def get_layout_pin_mapping(self):
-        """Returns the layout pin mapping dictionary.
-
-        This method returns a dictionary used to rename the layout pins, in case they are different
-        than the schematic pins.
-
-        Returns
-        -------
-        pin_mapping : dict[str, str]
-            a dictionary from layout pin names to schematic pin names.
-        """
-        return {}

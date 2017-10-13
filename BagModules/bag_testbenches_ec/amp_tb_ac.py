@@ -80,24 +80,8 @@ class bag_testbenches_ec__amp_tb_ac(Module):
                 raise ValueError('Parameter %s not specified.' % name)
             self.parameters[name] = local_dict[name]
 
-        # setup bias voltages
-        if vbias_dict:
-            vbias_dict = vbias_dict.copy()
-            # make sure VDD is always included
-            name = 'SUP'
-            counter = 1
-            while name in vbias_dict:
-                name = 'SUP%d' % counter
-                counter += 1
-
-            vbias_dict[name] = ['VDD', 'VSS', 'vdd']
-            self.design_dc_bias_sources(vbias_dict, 'VSUP', is_voltage=True)
-
-        # setup bias currents
-        if not ibias_dict:
-            self.delete_instance('IBIAS')
-        else:
-            self.design_dc_bias_sources(ibias_dict, 'IBIAS', is_voltage=False)
+        # setup bias sources
+        self.design_dc_bias_sources(vbias_dict, ibias_dict, 'VSUP', 'IBIAS', define_vdd=True)
 
         # delete load cap if needed
         if no_cload:
