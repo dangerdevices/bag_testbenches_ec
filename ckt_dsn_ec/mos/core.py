@@ -72,8 +72,8 @@ class MOSCharSS(SimulationManager):
 
         return lay_params
 
-    def get_tb_sch_params(self, tb_type, val_list):
-        # type: (str, Tuple[Any, ...]) -> Dict[str, Any]
+    def get_tb_sch_params(self, tb_type, impl_lib, dsn_cell_name, val_list):
+        # type: (str, str, str, Tuple[Any, ...]) -> Dict[str, Any]
         return {}
 
     def get_default_dsn_value(self, name):

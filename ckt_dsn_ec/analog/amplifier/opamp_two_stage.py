@@ -616,18 +616,6 @@ class OpAmpTwoStageChar(SimulationManager):
 
         self._val_list = combo_list[0]
 
-    def get_layout_params(self, val_list):
-        # type: (Tuple[Any, ...]) -> Dict[str, Any]
-        lay_params = self.specs['layout_params'].copy()
-        for var, val in zip(self.swp_var_list, val_list):
-            lay_params[var] = val
-
-        return lay_params
-
-    def get_tb_sch_params(self, tb_type, val_list):
-        # type: (str, Tuple[Any, ...]) -> Dict[str, Any]
-        return self.specs[tb_type]['sch_params']
-
     def configure_tb(self, tb_type, tb, val_list):
         # type: (str, Testbench, Tuple[Any, ...]) -> None
         tb_specs = self.specs[tb_type]
