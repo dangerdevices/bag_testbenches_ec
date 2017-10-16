@@ -29,8 +29,9 @@ from builtins import *
 
 import os
 import pkg_resources
-from typing import Tuple, Sequence, Dict
+from typing import Tuple, Sequence, Dict, Union
 
+from bag import float_to_si_string
 from bag.design import Module
 
 
@@ -42,20 +43,27 @@ class bag_testbenches_ec__dut_wrapper_dm(Module):
     """A class that wraps a differential DUT to single-ended.
     """
 
-    param_list = ['dut_lib', 'dut_cell', 'balun_list', 'pin_list', 'dut_conns']
+    param_list = ['dut_lib', 'dut_cell', 'balun_list', 'cap_list', 'pin_list', 'dut_conns']
 
     def __init__(self, bag_config, parent=None, prj=None, **kwargs):
         Module.__init__(self, bag_config, yaml_file, parent=parent, prj=prj, **kwargs)
         for par in self.param_list:
             self.parameters[par] = None
 
-    def design(self, dut_lib='', dut_cell='', balun_list=None, pin_list=None, dut_conns=None):
-        # type: (str, str, Sequence[Tuple[str, str, str, str]], Sequence[Tuple[str, str]], Dict[str, str]) -> None
+    def design(self,  # type: bag_testbenches_ec__dut_wrapper_dm
+               dut_lib='',  # type: str
+               dut_cell='',  # type: str
+               balun_list=None,  # type: Sequence[Tuple[str, str, str, str]]
+               cap_list=None,  # type: Sequence[Tuple[str, str, Union[float, str]]]
+               pin_list=None,  # type: Sequence[Tuple[str, str]]
+               dut_conns=None,  # type: Dict[str, str]
+               ):
+        # type: (...) -> None
         """Design this wrapper schematic.
 
         This cell converts a variable number of differential pins to single-ended pins or
         vice-versa, by using ideal_baluns.  It can also create extra pins to be connected
-        to the device.
+        to the device.  You can also optionally instantiate capacitive loads for the device.
 
         VDD and VSS pins will always be there for primary supplies.  Additional supplies
         can be added as inputOutput pins using the pin_list parameters.  If you don't need
@@ -73,8 +81,11 @@ class bag_testbenches_ec__dut_wrapper_dm(Module):
         dut_cell : str
             DUT cell name.
         balun_list: Sequence[Tuple[str, str, str, str]]
-            list of balun connects to instantiate, represented as a list of
+            list of baluns to instantiate, represented as a list of
             (diff, comm, pos, neg) tuples.
+        cap_list : Sequence[Tuple[str, str, Union[float, str]]]
+            list of load capacitors to create.  Represented as a list of (pos, neg, cap_val) tuples.
+            cap_val can be either capacitance value in Farads or a variable name/expression.
         pin_list : Sequence[Tuple[str, str]]
             list of pins of this schematic, represented as a list of (name, purpose) tuples.
             purpose can be 'input', 'output', or 'inputOutput'.
@@ -112,11 +123,27 @@ class bag_testbenches_ec__dut_wrapper_dm(Module):
             self.reconnect_instance_terminal('XDUT', dut_pin, net_name)
 
         # add baluns and connect them
-        num_balun = len(balun_list)
-        name_list = ['XBAL%d' % idx for idx in range(num_balun)]
-        self.array_instance('XBAL', name_list)
+        inst_name = 'XBAL'
+        num_inst = len(balun_list)
+        name_list = ['%s%d' % (inst_name, idx) for idx in range(num_inst)]
+        self.array_instance(inst_name, name_list)
         for idx, (diff, comm, pos, neg) in enumerate(balun_list):
-            self.reconnect_instance_terminal('XBAL', 'd', diff, index=idx)
-            self.reconnect_instance_terminal('XBAL', 'c', comm, index=idx)
-            self.reconnect_instance_terminal('XBAL', 'p', pos, index=idx)
-            self.reconnect_instance_terminal('XBAL', 'n', neg, index=idx)
+            self.reconnect_instance_terminal(inst_name, 'd', diff, index=idx)
+            self.reconnect_instance_terminal(inst_name, 'c', comm, index=idx)
+            self.reconnect_instance_terminal(inst_name, 'p', pos, index=idx)
+            self.reconnect_instance_terminal(inst_name, 'n', neg, index=idx)
+
+        # configure load capacitors
+        if cap_list:
+            inst_name = 'CLOAD'
+            num_inst = len(cap_list)
+            name_list = ['%s%d' % (inst_name, idx) for idx in range(num_inst)]
+            self.array_instance(inst_name, name_list)
+            for idx, (pos, neg, val) in enumerate(cap_list):
+                self.reconnect_instance_terminal(inst_name, 'PLUS', pos, index=idx)
+                self.reconnect_instance_terminal(inst_name, 'MINUS', neg, index=idx)
+                if isinstance(val, float) or isinstance(val, int):
+                    val = float_to_si_string(val)
+                self.instances[inst_name][idx].parameters['cap'] = val
+        else:
+            self.delete_instance('CLOAD')
