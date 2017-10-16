@@ -144,6 +144,6 @@ class bag_testbenches_ec__dut_wrapper_dm(Module):
                 self.reconnect_instance_terminal(inst_name, 'MINUS', neg, index=idx)
                 if isinstance(val, float) or isinstance(val, int):
                     val = float_to_si_string(val)
-                self.instances[inst_name][idx].parameters['cap'] = val
+                self.instances[inst_name][idx].parameters['c'] = val
         else:
             self.delete_instance('CLOAD')
