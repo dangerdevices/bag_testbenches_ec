@@ -64,18 +64,6 @@ class MOSCharSS(SimulationManager):
         # type: (Optional[BagProject], str) -> None
         super(MOSCharSS, self).__init__(prj, spec_file)
 
-    def get_layout_params(self, val_list):
-        # type: (Tuple[Any, ...]) -> Dict[str, Any]
-        lay_params = self.specs['layout_params'].copy()
-        for var, val in zip(self.swp_var_list, val_list):
-            lay_params[var] = val
-
-        return lay_params
-
-    def get_tb_sch_params(self, tb_type, impl_lib, dsn_cell_name, val_list):
-        # type: (str, str, str, Tuple[Any, ...]) -> Dict[str, Any]
-        return {}
-
     def get_default_dsn_value(self, name):
         # type: (str) -> Any
         """Returns default design parameter value."""
