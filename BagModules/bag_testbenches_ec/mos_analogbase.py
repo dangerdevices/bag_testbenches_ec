@@ -29,6 +29,7 @@ from builtins import *
 
 import os
 import pkg_resources
+from typing import Union, List, Tuple, Any
 
 from bag.design import Module
 
@@ -43,28 +44,41 @@ class bag_testbenches_ec__mos_analogbase(Module):
     Fill in high level description here.
     """
 
-    param_list = ['mos_type', 'w', 'lch', 'fg', 'intent', 'fg_dum', 'stack']
+    param_list = ['mos_type', 'w', 'lch', 'fg', 'intent', 'stack', 'dum_info']
 
     def __init__(self, bag_config, parent=None, prj=None, **kwargs):
         Module.__init__(self, bag_config, yaml_file, parent=parent, prj=prj, **kwargs)
         for par in self.param_list:
             self.parameters[par] = None
 
-    def design(self, mos_type='nch', w=4, lch=16e-9, fg=10, intent='standard', fg_dum=4, stack=1):
-        """To be overridden by subclasses to design this module.
+    def design(self,
+               mos_type='nch',  # type: str
+               w=4,  # type: Union[float, int]
+               lch=16e-9,  # type: float
+               fg=10,  # type: int
+               intent='standard',  # type: str
+               stack=1,  # type: int
+               dum_info=None,  # type: List[Tuple[Any]]
+               ):
+        # type: (...) -> None
+        """Design a single transistor for characterization purposes.
 
-        This method should fill in values for all parameters in
-        self.parameters.  To design instances of this module, you can
-        call their design() method or any other ways you coded.
-
-        To modify schematic structure, call:
-
-        rename_pin()
-        delete_instance()
-        replace_instance_master()
-        reconnect_instance_terminal()
-        restore_instance()
-        array_instance()
+        Parameters
+        ----------
+        mos_type : str
+            the transistor type.  Either 'nch' or 'pch'.
+        w : Union[float, int]
+            transistor width, in fins or meters.
+        lch : float
+            transistor channel length, in meters.
+        fg : int
+            number of fingers.
+        intent : str
+            transistor threshold flavor.
+        stack : int
+            number of transistors in a stack.
+        dum_info : List[Tuple[Any]]
+            the dummy information data structure.
         """
         local_dict = locals()
         for par in self.param_list:
@@ -95,14 +109,10 @@ class bag_testbenches_ec__mos_analogbase(Module):
                 cur_term['D'] = 'mid%d<%d:0>' % (idx - 1, fg - 1)
             term_list.append(cur_term)
 
-        name_list.append('XD0')
-        term_list.append(dict(D='s', G='b', S='b'))
-        name_list.append('XD1')
-        term_list.append(dict(D='b', G='b', S='b'))
-        self.array_instance(inst_name, name_list, term_list=term_list)
-
         # design transistors
+        self.array_instance(inst_name, name_list, term_list=term_list)
         for idx in range(stack):
             self.instances[inst_name][idx].design(w=w, l=lch, nf=1, intent=intent)
-        self.instances[inst_name][stack].design(w=w, l=lch, nf=2, intent=intent)
-        self.instances[inst_name][stack + 1].design(w=w, l=lch, nf=(fg_dum * 2 - 2), intent=intent)
+
+        # handle dummy transistors
+        self.design_dummy_transistors(dum_info, 'XD', 'b', 'b')
