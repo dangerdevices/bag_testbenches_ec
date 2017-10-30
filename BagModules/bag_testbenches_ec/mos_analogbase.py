@@ -29,7 +29,7 @@ from builtins import *
 
 import os
 import pkg_resources
-from typing import Union, List, Tuple, Any
+from typing import Union, List, Tuple, Any, Dict
 
 from bag.design import Module
 
@@ -44,21 +44,46 @@ class bag_testbenches_ec__mos_analogbase(Module):
     Fill in high level description here.
     """
 
-    param_list = ['mos_type', 'w', 'lch', 'fg', 'intent', 'stack', 'dum_info']
-
     def __init__(self, bag_config, parent=None, prj=None, **kwargs):
         Module.__init__(self, bag_config, yaml_file, parent=parent, prj=prj, **kwargs)
-        for par in self.param_list:
-            self.parameters[par] = None
+
+    @classmethod
+    def get_params_info(cls):
+        # type: () -> Dict[str, str]
+        """Returns a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : Optional[Dict[str, str]]
+            dictionary from parameter names to descriptions.
+        """
+        return dict(
+            mos_type="Transistor type.  Either 'pch' or 'nch'.",
+            w='Transistor width in meters or number of fins.',
+            lch='Transistor length in meters.',
+            fg='Transistor number of segments.',
+            intent='Transistor threshold flavor.',
+            stack='Number of stacked transistors in a segment.',
+            dum_info='Dummy information data structure.',
+        )
+
+    @classmethod
+    def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
+        return dict(
+            intent='standard',
+            stack=1,
+            dum_info=None,
+        )
 
     def design(self,
-               mos_type='nch',  # type: str
-               w=4,  # type: Union[float, int]
-               lch=16e-9,  # type: float
-               fg=10,  # type: int
-               intent='standard',  # type: str
-               stack=1,  # type: int
-               dum_info=None,  # type: List[Tuple[Any]]
+               mos_type,  # type: str
+               w,  # type: Union[float, int]
+               lch,  # type: float
+               fg,  # type: int
+               intent,  # type: str
+               stack,  # type: int
+               dum_info,  # type: List[Tuple[Any]]
                ):
         # type: (...) -> None
         """Design a single transistor for characterization purposes.
@@ -80,12 +105,6 @@ class bag_testbenches_ec__mos_analogbase(Module):
         dum_info : List[Tuple[Any]]
             the dummy information data structure.
         """
-        local_dict = locals()
-        for par in self.param_list:
-            if par not in local_dict:
-                raise Exception('Parameter %s not defined' % par)
-            self.parameters[par] = local_dict[par]
-
         if fg == 1:
             raise ValueError('Cannot make 1 finger transistor.')
         # select the correct transistor type
@@ -96,23 +115,26 @@ class bag_testbenches_ec__mos_analogbase(Module):
             self.delete_instance('XN')
             inst_name = 'XP'
 
-        # array instances
-        name_list = []
-        term_list = []
-        # add stack transistors
-        for idx in range(stack):
-            name_list.append('%s%d<%d:0>' % (inst_name, idx, fg - 1))
-            cur_term = {}
-            if idx != stack - 1:
-                cur_term['S'] = 'mid%d<%d:0>' % (idx, fg - 1)
-            if idx != 0:
-                cur_term['D'] = 'mid%d<%d:0>' % (idx - 1, fg - 1)
-            term_list.append(cur_term)
+        if stack > 1:
+            # array instances
+            name_list = []
+            term_list = []
+            # add stack transistors
+            for idx in range(stack):
+                name_list.append('%s%d<%d:0>' % (inst_name, idx, fg - 1))
+                cur_term = {}
+                if idx != stack - 1:
+                    cur_term['S'] = 'mid%d<%d:0>' % (idx, fg - 1)
+                if idx != 0:
+                    cur_term['D'] = 'mid%d<%d:0>' % (idx - 1, fg - 1)
+                term_list.append(cur_term)
 
-        # design transistors
-        self.array_instance(inst_name, name_list, term_list=term_list)
-        for idx in range(stack):
-            self.instances[inst_name][idx].design(w=w, l=lch, nf=1, intent=intent)
+            # design transistors
+            self.array_instance(inst_name, name_list, term_list=term_list)
+            for idx in range(stack):
+                self.instances[inst_name][idx].design(w=w, l=lch, nf=1, intent=intent)
+        else:
+            self.instances[inst_name].design(w=w, l=lch, nf=fg, intent=intent)
 
         # handle dummy transistors
         self.design_dummy_transistors(dum_info, 'XD', 'b', 'b')
