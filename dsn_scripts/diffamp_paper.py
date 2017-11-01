@@ -74,9 +74,13 @@ def design_amp(amp_specs, nch_db, pch_db):
             seg_load_iter = BinaryIterator(2, None, step=2)
             while seg_load_iter.has_next():
                 seg_load = seg_load_iter.get_next()
-                vbp = find_load_bias(pch_db, vdd, vout, vgsp_min, vgsp_max, ibiasn, seg_load, fun_ibiasp)
+                vbp, sgn = find_load_bias(pch_db, vdd, vout, vgsp_min, vgsp_max, ibiasn, seg_load, fun_ibiasp)
+
                 if vbp is None:
-                    seg_load_iter.up()
+                    if sgn > 0:
+                        seg_load_iter.up()
+                    else:
+                        seg_load_iter.down()
                 else:
                     parg = pch_db.get_fun_arg(vgs=vbp - vdd, vds=vout - vdd, vbs=0)
                     gdsp = seg_load * fun_gdsp(parg)
@@ -87,6 +91,10 @@ def design_amp(amp_specs, nch_db, pch_db):
                         seg_load_iter.up()
 
             seg_load = seg_load_iter.get_last_save()
+            if seg_load is None:
+                # no load solution -> cannot meet gain spec.
+                break
+
             vbp, parg = seg_load_iter.get_last_save_info()
             gdsp = seg_load * fun_gdsp(parg)
             cdp = seg_load * fun_cdp(parg)
@@ -123,7 +131,7 @@ def design_amp(amp_specs, nch_db, pch_db):
 
     ibias_opt, gain_opt, bw_opt, seg_in, seg_load, vgs_in, vload = performance
     vio = vtail + vgs_in
-    vbias = find_tail_bias(fun_ibiasn, nch_db, vtail, vgsn_min, vgsn_max, seg_in, ibias_opt)
+    seg_tail, vbias = find_tail_bias(fun_ibiasn, nch_db, vtail, vgsn_min, vgsn_max, seg_in, ibias_opt)
 
     return dict(
         ibias=ibias_opt,
@@ -131,19 +139,37 @@ def design_amp(amp_specs, nch_db, pch_db):
         bw=bw_opt,
         seg_in=seg_in,
         seg_load=seg_load,
+        seg_tail=seg_tail,
         vbias=vbias,
         vio=vio,
         vload=vload,
     )
 
 
-def find_tail_bias(fun_ibiasn, nch_db, vtail, vgs_min, vgs_max, seg_tail, itarg):
-    def fun_zero(vgs):
-        narg = nch_db.get_fun_arg(vgs=vgs, vds=vtail, vbs=0)
-        return fun_ibiasn(narg) * seg_tail - itarg
+def find_tail_bias(fun_ibiasn, nch_db, vtail, vgs_min, vgs_max, seg_tail_min, itarg):
+    seg_tail_iter = BinaryIterator(seg_tail_min, None, step=2)
+    while seg_tail_iter.has_next():
+        seg_tail = seg_tail_iter.get_next()
 
-    vbias = sciopt.brentq(fun_zero, vgs_min, vgs_max)  # type: float
-    return vbias
+        def fun_zero(vgs):
+            narg = nch_db.get_fun_arg(vgs=vgs, vds=vtail, vbs=0)
+            return fun_ibiasn(narg) * seg_tail - itarg
+
+        if fun_zero(vgs_min) > 0:
+            # smallest possible current > itarg
+            seg_tail_iter.down()
+        if fun_zero(vgs_max) < 0:
+            # largest possible current < itarg
+            seg_tail_iter.up()
+        else:
+            vbias = sciopt.brentq(fun_zero, vgs_min, vgs_max)  # type: float
+            seg_tail_iter.save_info(vbias)
+            seg_tail_iter.down()
+
+    seg_tail = seg_tail_iter.get_last_save()
+    vbias = seg_tail_iter.get_last_save_info()
+
+    return seg_tail, vbias
 
 
 def find_load_bias(pch_db, vdd, vout, vgsp_min, vgsp_max, itarg, seg_load, fun_ibiasp):
@@ -151,14 +177,18 @@ def find_load_bias(pch_db, vdd, vout, vgsp_min, vgsp_max, itarg, seg_load, fun_i
         parg = pch_db.get_fun_arg(vgs=vbias - vdd, vds=vout - vdd, vbs=0)
         return fun_ibiasp(parg) * seg_load - itarg
 
-    vbias_min = vdd + vgsp_max
-    vbias_max = vdd + vgsp_min
+    vbias_min = vdd + vgsp_min
+    vbias_max = vdd + vgsp_max
 
-    try:
-        vbias_opt = sciopt.brentq(fun_zero, vbias_min, vbias_max)  # type: float
-        return vbias_opt
-    except ValueError:
-        return None
+    if fun_zero(vbias_max) > 0:
+        # smallest possible current > itarg
+        return None, -1
+    if fun_zero(vbias_min) < 0:
+        # largest possible current < itarg
+        return None, 1
+
+    vbias_opt = sciopt.brentq(fun_zero, vbias_min, vbias_max)  # type: float
+    return vbias_opt, 0
 
 
 def run_main():
@@ -171,6 +201,9 @@ def run_main():
     print('create transistor database')
     nch_db = MOSDBDiscrete([nch_config])
     pch_db = MOSDBDiscrete([pch_config])
+
+    nch_db.set_dsn_params(**amp_specs['nch'])
+    pch_db.set_dsn_params(**amp_specs['pch'])
 
     result = design_amp(amp_specs, nch_db, pch_db)
     if result is None:
