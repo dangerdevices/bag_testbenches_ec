@@ -3,6 +3,7 @@
 """This script designs a simple diff amp with gain/bandwidth spec for BAG CICC paper."""
 
 import math
+import pprint
 
 import numpy as np
 import scipy.optimize as sciopt
@@ -119,11 +120,21 @@ def design_amp(amp_specs, nch_db, pch_db):
 
     if performance is None:
         return None
+
     ibias_opt, gain_opt, bw_opt, seg_in, seg_load, vgs_in, vload = performance
     vio = vtail + vgs_in
     vbias = find_tail_bias(fun_ibiasn, nch_db, vtail, vgsn_min, vgsn_max, seg_in, ibias_opt)
 
-    return ibias_opt, gain_opt, bw_opt, seg_in, seg_load, vbias, vio, vload
+    return dict(
+        ibias=ibias_opt,
+        gain=gain_opt,
+        bw=bw_opt,
+        seg_in=seg_in,
+        seg_load=seg_load,
+        vbias=vbias,
+        vio=vio,
+        vload=vload,
+    )
 
 
 def find_tail_bias(fun_ibiasn, nch_db, vtail, vgs_min, vgs_max, seg_tail, itarg):
@@ -151,8 +162,8 @@ def find_load_bias(pch_db, vdd, vout, vgsp_min, vgsp_max, itarg, seg_load, fun_i
 
 
 def run_main():
-    nch_config = 'mos_char_specs/nch_w4_amp.yaml'
-    pch_config = 'mos_char_specs/pch_w4_amp.yaml'
+    nch_config = 'specs_mos_char/nch_w4_amp.yaml'
+    pch_config = 'specs_mos_char/pch_w4_amp.yaml'
     amp_specs = 'specs_dsn/diffamp_paper.yaml'
 
     amp_specs = read_yaml(amp_specs)
@@ -161,7 +172,11 @@ def run_main():
     nch_db = MOSDBDiscrete([nch_config])
     pch_db = MOSDBDiscrete([pch_config])
 
-    design_amp(amp_specs, nch_db, pch_db)
+    result = design_amp(amp_specs, nch_db, pch_db)
+    if result is None:
+        print('No solution.')
+    else:
+        pprint.pprint(result)
 
 
 if __name__ == '__main__':
