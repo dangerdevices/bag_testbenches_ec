@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+"""This script designs a simple diff amp with gain/bandwidth spec for BAG CICC paper."""
+
 
 from bag.io import read_yaml
 
@@ -21,19 +23,14 @@ def print_dsn_info(info):
 
 
 if __name__ == '__main__':
-    pch_config = 'mos_char_specs/mos_char_pch_stack_w2.yaml'
-    gm_specs = 'dsn_specs/input_gm.yaml'
+    nch_config = 'mos_char_specs/nch_w4_amp.yaml'
+    pch_config = 'mos_char_specs/pch_w4_amp.yaml'
+    amp_specs = 'specs_dsn/diffamp_paper.yaml'
 
-    noise_fstart = 20e3
-    noise_fstop = noise_fstart + 500
-    noise_scale = 1.0
-    noise_temp = 310
-
-    gm_specs = read_yaml(gm_specs)
+    amp_specs = read_yaml(amp_specs)
 
     print('create transistor database')
-    pch_db = MOSDBDiscrete([pch_config], noise_fstart, noise_fstop,
-                           noise_scale=noise_scale, noise_temp=noise_temp)
+    nch_db = MOSDBDiscrete([pch_config])
     print('create design class')
     gm_dsn = InputGm(pch_db)
 

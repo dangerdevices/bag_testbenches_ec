@@ -12,7 +12,7 @@ import scipy.constants
 import scipy.interpolate
 
 from bag.io import read_yaml, open_file
-from bag.core import Testbench, BagProject
+from bag.core import Testbench, BagProject, create_tech_info
 from bag.data import Waveform
 from bag.data.mos import mos_y_to_ss
 from bag.tech.core import SimulationManager
@@ -63,6 +63,11 @@ class MOSCharSS(SimulationManager):
     def __init__(self, prj, spec_file):
         # type: (Optional[BagProject], str) -> None
         super(MOSCharSS, self).__init__(prj, spec_file)
+
+    @property
+    def width(self):
+        """Returns the transistor width."""
+        return self.specs['layout_params']['w']
 
     def get_default_dsn_value(self, name):
         # type: (str) -> Any
@@ -373,12 +378,8 @@ class MOSDBDiscrete(object):
 
     Parameters
     ----------
-    width_list : List[Union[float, int]]
-        list of valid widths.
     spec_list : List[str]
         list of specification file locations corresponding to widths.
-    width_res : Union[float, int]
-        width resolution.
     noise_fstart : Optional[float]
         noise integration frequency lower bound.  None to disable noise.
     noise_fstop : Optional[float]
@@ -391,36 +392,35 @@ class MOSDBDiscrete(object):
         interpolation method.
     cfit_method : str
         method used to fit capacitance to Y parameters.
+    bag_config_path : Optional[str]
+        BAG configuration file path.
     """
 
     def __init__(self,
-                 width_list,  # type: List[Union[float, int]]
                  spec_list,  # type: List[str]
-                 width_res,  # type: Union[float, int]
                  noise_fstart=None,  # type: Optional[float]
                  noise_fstop=None,  # type: Optional[float]
                  noise_scale=1.0,  # type: float
                  noise_temp=300,  # type: float
                  method='linear',  # type: str
                  cfit_method='average',  # type: str
+                 bag_config_path=None,  # type: Optional[str]
                  ):
         # type: (...) -> None
         # error checking
-        if len(width_list) != len(spec_list):
-            raise ValueError('width_list and spec_list length mismatch.')
-        if not width_list:
-            raise ValueError('Must have at least one entry.')
 
-        self._width_res = width_res
-        self._width_list = [int(round(w / width_res)) for w in width_list]
+        tech_info = create_tech_info(bag_config_path=bag_config_path)
 
+        self._width_res = tech_info.tech_params['mos']['width_resolution']
         self._sim_envs = None
         self._ss_swp_names = None
         self._sim_list = []
         self._ss_list = []
         self._ss_outputs = None
+        self._width_list = []
         for spec in spec_list:
             sim = MOSCharSS(None, spec)
+            self._width_list.append(int(round(sim.width / self._width_res)))
             # error checking
             if 'w' in sim.swp_var_list:
                 raise ValueError('MOSDBDiscrete assumes transistor width is not swept.')
@@ -443,7 +443,7 @@ class MOSDBDiscrete(object):
 
         self._env_list = self._sim_envs
         self._cur_idx = 0
-        self._dsn_params = dict(w=width_list[0])
+        self._dsn_params = dict(w=self._width_list[0])
 
     @property
     def width_list(self):

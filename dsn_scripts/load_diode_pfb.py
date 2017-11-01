@@ -32,7 +32,7 @@ if __name__ == '__main__':
     load_specs = read_yaml(load_specs)
 
     print('create transistor database')
-    nch_db = MOSDBDiscrete([2], [nch_config], 1, noise_fstart, noise_fstop,
+    nch_db = MOSDBDiscrete([nch_config], noise_fstart, noise_fstop,
                            noise_scale=noise_scale, noise_temp=noise_temp)
 
     print('create design class')
