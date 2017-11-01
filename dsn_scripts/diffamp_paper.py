@@ -164,7 +164,7 @@ def find_load_bias(pch_db, vdd, vout, vgsp_min, vgsp_max, itarg, seg_load, fun_i
 def run_main():
     nch_config = 'specs_mos_char/nch_w4_amp.yaml'
     pch_config = 'specs_mos_char/pch_w4_amp.yaml'
-    amp_specs = 'specs_dsn/diffamp_paper.yaml'
+    amp_specs = 'specs_design/diffamp_paper.yaml'
 
     amp_specs = read_yaml(amp_specs)
 
