@@ -638,7 +638,7 @@ class OpAmpTwoStageChar(SimulationManager):
             else:
                 tb.set_parameter(key, val)
 
-    def find_cfb(self, min_scale=1.0, max_scale=2.0, num_pts=11, extract=True, gen_dsn=True):
+    def find_cfb(self, min_scale=1.0, max_scale=2.0, num_pts=11, gen_dsn=True):
         tb_type = 'tb_ac'
         feedback_params = self.specs['feedback_params']
         tb_ac_specs = self.specs[tb_type]
@@ -655,7 +655,8 @@ class OpAmpTwoStageChar(SimulationManager):
         tb_ac_specs['tb_params']['rfb'] = rfb0 * (1 - res_var)
 
         if gen_dsn:
-            self.create_designs(tb_type=tb_type, extract=extract)
+            self.create_designs()
+            self.run_simulations(tb_type)
         else:
             self.run_simulations(tb_type)
 
