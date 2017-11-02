@@ -15,7 +15,7 @@ from bag.io import read_yaml, open_file
 from bag.core import Testbench, BagProject, create_tech_info
 from bag.data import Waveform
 from bag.data.mos import mos_y_to_ss
-from bag.tech.core import SimulationManager
+from bag.simulation.core import SimulationManager
 from bag.math.dfun import VectorDiffFunction, DiffFunction
 from bag.math.interpolate import LinearInterpolator, interpolate_grid
 

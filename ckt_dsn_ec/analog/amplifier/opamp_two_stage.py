@@ -15,7 +15,7 @@ from bag.math import gcd
 from bag.data.core import Waveform
 from bag.data.lti import LTICircuit, get_stability_margins, get_w_crossings, get_w_3db
 from bag.util.search import FloatBinaryIterator, BinaryIterator, minimize_cost_golden
-from bag.tech.core import SimulationManager
+from bag.simulation.core import SimulationManager
 
 from ckt_dsn_ec.mos.core import MOSDBDiscrete
 
