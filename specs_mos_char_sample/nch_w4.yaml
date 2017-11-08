@@ -63,7 +63,7 @@ measurements:
         vgs_max: 1.0
         ibias_min_fg: 1.0e-6
         ibias_max_fg: 200.0e-6
-        vgs_resolution: 4e-3
+        vgs_resolution: 4.0e-3
       sp:
         tb_lib: 'bag_testbenches_ec'
         tb_cell: 'mos_tb_sp'
@@ -75,3 +75,4 @@ measurements:
         vds_max: 1.0
         vbs: [0.0, 0.15, 0.3, 0.45]
         sp_freq: 1.0e+6
+        cfit_method: 'average'
