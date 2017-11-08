@@ -4,7 +4,11 @@
 
 from typing import TYPE_CHECKING, Optional, Tuple, Dict, Any, Sequence
 
+import math
+
 import numpy as np
+import scipy.interpolate as interp
+import scipy.optimize as sciopt
 
 from bag.simulation.core import MeasurementManager
 
@@ -145,52 +149,72 @@ class MosCharSS(MeasurementManager):
         # type: (str, Dict[str, Any], Dict[str, Any]) -> Tuple[bool, str, Dict[str, Any]]
 
         if state == 'ibias':
-            pass
+            done = False
+            next_state = 'sp'
+            output = self.process_ibias_data(data, tb_specs)
+        elif state == 'sp':
+            output = {}
+            testbenches = self.specs['testbenches']
+            if 'noise' in testbenches:
+                done = False
+                next_state = 'noise'
+            else:
+                done = True
+                next_state = ''
+        elif state == 'noise':
+            done = True
+            next_state = ''
+            output = {}
+        else:
+            raise ValueError('Unknown state: %s' % state)
 
-        return False, '', {}
+        return done, next_state, output
 
-    def process_ibias_data(self, tb_specs):
-        layout_params = self.specs['layout_params']
+    def process_ibias_data(self, data, tb_specs):
+        fg = self.specs['fg']
+        is_nmos = self.specs['is_nmos']
 
-        fg = layout_params['fg']
         ibias_min_fg = tb_specs['ibias_min_fg']
         ibias_max_fg = tb_specs['ibias_max_fg']
         vgs_res = tb_specs['vgs_resolution']
 
-        ans = {}
-        for val_list in self.get_combinations_iter():
-            # invert PMOS ibias sign
-            is_nmos = self.is_nmos(val_list)
-            ibias_sgn = 1.0 if is_nmos else -1.0
-            results = self.get_sim_results(tb_type, val_list)
+        # invert PMOS ibias sign
+        ibias_sgn = 1.0 if is_nmos else -1.0
 
-            # assume first sweep parameter is corner, second sweep parameter is vgs
-            corner_idx = results['sweep_params']['ibias'].index('corner')
-            vgs = results['vgs']
-            ibias = results['ibias'] * ibias_sgn  # type: np.ndarray
+        vgs = data['vgs']
+        ibias = data['ibias'] * ibias_sgn  # type: np.ndarray
 
-            wv_max = Waveform(vgs, np.amax(ibias, corner_idx), 1e-6, order=2)
-            wv_min = Waveform(vgs, np.amin(ibias, corner_idx), 1e-6, order=2)
-            vgs1 = wv_max.get_crossing(ibias_min_fg * fg)
-            if vgs1 is None:
-                vgs1 = vgs[0] if is_nmos else vgs[-1]
-            vgs2 = wv_min.get_crossing(ibias_max_fg * fg)
-            if vgs2 is None:
-                vgs2 = vgs[-1] if is_nmos else vgs[0]
+        # assume first sweep parameter is corner, second sweep parameter is vgs
+        try:
+            corner_idx = data['sweep_params']['ibias'].index('corner')
+            ivec_max = np.amax(ibias, corner_idx)
+            ivec_min = np.amin(ibias, corner_idx)
+        except ValueError:
+            ivec_max = ivec_min = ibias
 
-            if is_nmos:
-                vgs_min, vgs_max = vgs1, vgs2
-            else:
-                vgs_min, vgs_max = vgs2, vgs1
+        vgs1 = self._get_best_crossing(vgs, ivec_max, ibias_min_fg * fg)
+        vgs2 = self._get_best_crossing(vgs, ivec_min, ibias_max_fg * fg)
 
-            vgs_min = math.floor(vgs_min / vgs_res) * vgs_res
-            vgs_max = math.ceil(vgs_max / vgs_res) * vgs_res
+        vgs_min = min(vgs1, vgs2)
+        vgs_max = max(vgs1, vgs2)
 
-            dsn_name = self.get_instance_name(dsn_name_base, val_list)
-            print('%s: vgs = [%.4g, %.4g]' % (dsn_name, vgs_min, vgs_max))
-            ans[dsn_name] = [vgs_min, vgs_max]
+        vgs_min = math.floor(vgs_min / vgs_res) * vgs_res
+        vgs_max = math.ceil(vgs_max / vgs_res) * vgs_res
 
-        if write:
-            vgs_file = os.path.join(root_dir, vgs_file)
-            with open_file(vgs_file, 'w') as f:
-                yaml.dump(ans, f)
+        return dict(vgs_range=[vgs_min, vgs_max])
+
+    @classmethod
+    def _get_best_crossing(cls, xvec, yvec, val):
+        interp_fun = interp.InterpolatedUnivariateSpline(xvec, yvec)
+
+        def fzero(x):
+            return interp_fun(x) - val
+
+        xstart, xstop = xvec[0], xvec[-1]
+        try:
+            return sciopt.brentq(fzero, xstart, xstop)
+        except ValueError:
+            # avoid no solution
+            if abs(fzero(xstart)) < abs(fzero(xstop)):
+                return xstart
+            return xstop
