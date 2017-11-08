@@ -29,6 +29,7 @@ from builtins import *
 
 import os
 import pkg_resources
+from typing import Dict, Any
 
 from bag.design import Module
 
@@ -43,29 +44,38 @@ class bag_testbenches_ec__amp_tb_ac(Module):
     Fill in high level description here.
     """
 
-    param_list = ['dut_lib', 'dut_cell', 'dut_conns', 'vbias_dict', 'ibias_dict', 'no_cload']
-
     def __init__(self, bag_config, parent=None, prj=None, **kwargs):
         Module.__init__(self, bag_config, yaml_file, parent=parent, prj=prj, **kwargs)
-        for par in self.param_list:
-            self.parameters[par] = None
+
+    @classmethod
+    def get_params_info(cls):
+        # type: () -> Dict[str, str]
+        """Returns a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : Optional[Dict[str, str]]
+            dictionary from parameter names to descriptions.
+        """
+        return dict(
+            dut_lib='DUT library name.',
+            dut_cell='DUT cell name.',
+            dut_conns='DUT connection dictionary.',
+            vbias_dict='Voltage source dictionary.',
+            ibias_dict='Current source dictionary.',
+            no_cload='True to disable output capacitor load.',
+        )
+
+    @classmethod
+    def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
+        return dict(
+            no_cload=False,
+        )
 
     def design(self, dut_lib='', dut_cell='', dut_conns=None,
                vbias_dict=None, ibias_dict=None, no_cload=False):
-        """To be overridden by subclasses to design this module.
-
-        This method should fill in values for all parameters in
-        self.parameters.  To design instances of this module, you can
-        call their design() method or any other ways you coded.
-
-        To modify schematic structure, call:
-
-        rename_pin()
-        delete_instance()
-        replace_instance_master()
-        reconnect_instance_terminal()
-        restore_instance()
-        array_instance()
+        """Design the generic AC testbench.
         """
         if vbias_dict is None:
             vbias_dict = {}
@@ -73,12 +83,6 @@ class bag_testbenches_ec__amp_tb_ac(Module):
             ibias_dict = {}
         if dut_conns is None:
             dut_conns = {}
-
-        local_dict = locals()
-        for name in self.param_list:
-            if name not in local_dict:
-                raise ValueError('Parameter %s not specified.' % name)
-            self.parameters[name] = local_dict[name]
 
         # setup bias sources
         self.design_dc_bias_sources(vbias_dict, ibias_dict, 'VSUP', 'IBIAS', define_vdd=True)

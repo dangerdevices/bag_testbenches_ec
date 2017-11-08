@@ -65,18 +65,6 @@
 					<dependentTest enabled="1">tb_ac</dependentTest>
 				</dependentTests>
 			</var>
-			<var>vinac
-				<value>1</value>
-				<dependentTests>
-					<dependentTest enabled="1">tb_ac</dependentTest>
-				</dependentTests>
-			</var>
-			<var>vindc
-				<value>0.5</value>
-				<dependentTests>
-					<dependentTest enabled="1">tb_ac</dependentTest>
-				</dependentTests>
-			</var>
 			<var>fstart
 				<value>1M</value>
 				<dependentTests>
