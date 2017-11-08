@@ -1,24 +1,25 @@
-impl_lib: 'AAAFOO_MOSCHAR_NCH_W4'
 dut_lib: 'bag_testbenches_ec'
 dut_cell: 'mos_analogbase'
 layout_package: 'abs_templates_ec.mos_char'
 layout_class: 'Transistor'
-sweep_params:
-  lch: [!!float 20e-9, !!float 30e-9, !!float 40e-9]
-  intent: ["ulvt", "lvt", "svt"]
 
-dsn_name_base: 'MOS_NCH_W4'
-sim_envs: ["tt"]
+impl_lib: 'AAAFOO_MOSCHAR_NCH'
+dsn_basename: 'MOS_NCH'
+
+rcx_params: {}
+view_name: 'netlist'
+
+root_dir: 'data/mos_char_nch'
+summary_fname: 'summary.yaml'
+
 routing_grid:
   layers: [4, 5]
   spaces: [0.1, 0.1]
   widths: [0.1, 0.1]
   bot_dir: 'x'
 
-rcx_params: {}
-
-
-root_dir: 'data/mos_char_nch_w4_vbs'
+sweep_params:
+  intent: ['standard']
 
 layout_params:
   mos_type: 'nch'
@@ -40,42 +41,37 @@ layout_params:
     sb: 1
     db: 1
 
-view_name: 'schematic'
-vgs_file: 'vgs_specs.yaml'
+dut_wrappers: []
 
-tb_ibias:
-  tb_lib: 'bag_testbenches_ec'
-  tb_cell: 'mos_tb_ibias'
-  tb_name_base: 'TB_IBIAS'
-  ibias_min_fg: !!float 1.0e-6
-  ibias_max_fg: !!float 200.0e-6
-  vgs_resolution: !!float 4e-3
-  tb_params:
-    vgs_max: 1.0
-    vgs_num: 200
 
-tb_sp:
-  tb_lib: 'bag_testbenches_ec'
-  tb_cell: 'mos_tb_sp'
-  tb_name_base: 'TB_SP'
-  tb_params:
-    sp_freq: !!float 1e6
-    vbs: [!!float 0, !!float 0.15, !!float 0.3, !!float 0.45]
-    vds_min: !!float 5e-3
-    vds_max: !!float 1.0
-    vds_num: 20
-    vgs_num: 30
+env_list: ['tt']
 
-tb_noise:
-  tb_lib: 'bag_testbenches_ec'
-  tb_cell: 'mos_tb_noise'
-  tb_name_base: 'TB_NOISE'
-  tb_params:
-    freq_start: 1
-    freq_stop: !!float 10e6
-    num_per_dec: 20
-    vbs: [!!float 0, !!float 0.15, !!float 0.3, !!float 0.45]
-    vds_min: !!float 5e-3
-    vds_max: !!float 1.0
-    vds_num: 20
-    vgs_num: 30
+measurements:
+  - meas_type: 'mos_ss'
+    meas_package: 'verification_ec.mos.sim'
+    meas_class: 'MosCharSS'
+    out_fname: 'mos_ss.yaml'
+    is_nmos: True
+    fg: 20
+    testbenches:
+      ibias:
+        tb_lib: 'bag_testbenches_ec'
+        tb_cell: 'mos_tb_ibias'
+        sch_params: {}
+        wrapper_type: ''
+        vgs_num: 200
+        vgs_max: 1.0
+        ibias_min_fg: 1.0e-6
+        ibias_max_fg: 200.0e-6
+        vgs_resolution: 4e-3
+      sp:
+        tb_lib: 'bag_testbenches_ec'
+        tb_cell: 'mos_tb_sp'
+        sch_params: {}
+        wrapper_type: ''
+        vgs_num: 30
+        vds_num: 20
+        vds_min: 5.0e-3
+        vds_max: 1.0
+        vbs: [0.0, 0.15, 0.3, 0.45]
+        sp_freq: 1.0e+6

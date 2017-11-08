@@ -41,11 +41,13 @@ class MosCharSS(MeasurementManager):
         the DUT wrapper cell name lookup table.
     sim_view_list : Sequence[Tuple[str, str]]
         simulation view list
+    env_list : Sequence[str]
+        simulation environments list.
     """
 
-    def __init__(self, data_dir, meas_name, impl_lib, specs, wrapper_lookup, sim_view_list):
-        # type: (str, str, str, Dict[str, Any], Dict[str, str], Sequence[Tuple[str, str]]) -> None
-        MeasurementManager.__init__(self, data_dir, meas_name, impl_lib, specs, wrapper_lookup, sim_view_list)
+    def __init__(self, data_dir, meas_name, impl_lib, specs, wrapper_lookup, sim_view_list, env_list):
+        # type: (str, str, str, Dict[str, Any], Dict[str, str], Sequence[Tuple[str, str]], Sequence[str]) -> None
+        MeasurementManager.__init__(self, data_dir, meas_name, impl_lib, specs, wrapper_lookup, sim_view_list, env_list)
 
     def get_initial_state(self):
         # type: () -> str
