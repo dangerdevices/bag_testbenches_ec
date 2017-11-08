@@ -2,6 +2,21 @@
 
 """This package contains query classes for transistor parameters."""
 
+from typing import TYPE_CHECKING, List, Optional, Union, Sequence, Tuple, Any, Dict
+
+import os
+
+import numpy as np
+
+from bag.core import create_tech_info
+from bag.simulation.core import DesignManager
+from bag.io.sim_data import load_sim_file
+from bag.math.interpolate import interpolate_grid
+from bag.math.dfun import VectorDiffFunction
+
+if TYPE_CHECKING:
+    from bag.math.dfun import DiffFunction
+
 
 class MOSDBDiscrete(object):
     """Transistor small signal parameters database with discrete width choices.
@@ -13,31 +28,19 @@ class MOSDBDiscrete(object):
     ----------
     spec_list : List[str]
         list of specification file locations corresponding to widths.
-    noise_fstart : Optional[float]
-        noise integration frequency lower bound.  None to disable noise.
-    noise_fstop : Optional[float]
-        noise integration frequency upper bound.  None to disable noise.
-    noise_scale : float
-        noise integration scaling factor.
-    noise_temp : float
-        noise temperature.
-    method : str
+    interp_method : str
         interpolation method.
-    cfit_method : str
-        method used to fit capacitance to Y parameters.
     bag_config_path : Optional[str]
         BAG configuration file path.
+    meas_type : str
+        transistor characterization measurement type.
     """
 
     def __init__(self,
                  spec_list,  # type: List[str]
-                 noise_fstart=None,  # type: Optional[float]
-                 noise_fstop=None,  # type: Optional[float]
-                 noise_scale=1.0,  # type: float
-                 noise_temp=300,  # type: float
-                 method='linear',  # type: str
-                 cfit_method='average',  # type: str
+                 interp_method='spline',  # type: str
                  bag_config_path=None,  # type: Optional[str]
+                 meas_type='mos_ss',  # type: str
                  ):
         # type: (...) -> None
         # error checking
@@ -47,36 +50,80 @@ class MOSDBDiscrete(object):
         self._width_res = tech_info.tech_params['mos']['width_resolution']
         self._sim_envs = None
         self._ss_swp_names = None
-        self._sim_list = []
+        self._manager_list = []  # type: List[DesignManager]
         self._ss_list = []
         self._ss_outputs = None
         self._width_list = []
+
         for spec in spec_list:
-            sim = MOSCharSS(None, spec)
-            self._width_list.append(int(round(sim.width / self._width_res)))
+            dsn_manager = DesignManager(None, spec)
+            cur_width = dsn_manager.specs['layout_params']['w']
+            cur_width = int(round(cur_width / self._width_res))
+            self._width_list.append(cur_width)
+
             # error checking
-            if 'w' in sim.swp_var_list:
+            if 'w' in dsn_manager.swp_var_list:
                 raise ValueError('MOSDBDiscrete assumes transistor width is not swept.')
 
-            corners, ss_swp_names, ss_dict = sim.get_ss_info(noise_fstart, noise_fstop,
-                                                             scale=noise_scale, temp=noise_temp,
-                                                             method=method, cfit_method=cfit_method)
-            if self._sim_envs is None:
-                self._ss_swp_names = ss_swp_names
-                self._sim_envs = corners
-                test_dict = next(iter(ss_dict.values()))
-                self._ss_outputs = sorted(test_dict.keys())
-            elif self._sim_envs != corners:
-                raise ValueError('Simulation environments mismatch between given specs.')
-            elif self._ss_swp_names != ss_swp_names:
-                raise ValueError('signal-signal parameter sweep names mismatch.')
+            ss_fun_table = {}
+            for dsn_name in dsn_manager.get_dsn_name_iter():
+                meas_dir = dsn_manager.get_measurement_directory(dsn_name, meas_type)
+                ss_dict = load_sim_file(os.path.join(meas_dir, 'ss_params.hdf5'))
 
-            self._sim_list.append(sim)
-            self._ss_list.append(ss_dict)
+                cur_corners = ss_dict['corner'].tolist()
+                cur_ss_swp_names = ss_dict['sweep_params']['ibias'][1:]
+                if self._sim_envs is None:
+                    # assign attributes for the first time
+                    self._sim_envs = cur_corners
+                    self._ss_swp_names = cur_ss_swp_names
+                elif self._sim_envs != cur_corners:
+                    raise ValueError('Simulation environments mismatch between given specs.')
+                elif self._ss_swp_names != cur_ss_swp_names:
+                    raise ValueError('signal-signal parameter sweep names mismatch.')
+
+                cur_fun_dict = self._make_ss_functions(ss_dict, cur_corners, cur_ss_swp_names, interp_method)
+
+                if self._ss_outputs is None:
+                    self._ss_outputs = sorted(cur_fun_dict.keys())
+
+                ss_fun_table[dsn_name] = cur_fun_dict
+
+            self._manager_list.append(dsn_manager)
+            self._ss_list.append(ss_fun_table)
 
         self._env_list = self._sim_envs
         self._cur_idx = 0
         self._dsn_params = dict(w=self._width_list[0])
+
+    @classmethod
+    def _make_ss_functions(cls, ss_dict, corners, swp_names, interp_method):
+        scale_list = []
+        for name in swp_names:
+            cur_xvec = ss_dict[name]
+            scale_list.append((cur_xvec[0], cur_xvec[1] - cur_xvec[0]))
+
+        fun_table = {}
+        corner_sort_arg = np.argsort(corners)  # type: Sequence[int]
+        for key in ss_dict['sweep_params'].keys():
+            arr = ss_dict[key]
+            fun_list = []
+            for idx in corner_sort_arg:
+                fun_list.append(interpolate_grid(scale_list, arr[idx, ...], method=interp_method,
+                                                 extrapolate=True, delta=1e-5))
+            fun_table[key] = fun_list
+
+        # add derived parameters
+        cgdl = fun_table['cgd']
+        cgsl = fun_table['cgs']
+        cgbl = fun_table['cgb']
+        cdsl = fun_table['cds']
+        cdbl = fun_table['cdb']
+        csbl = fun_table['csb']
+        ss_dict['cgg'] = [cgd + cgs + cgb for (cgd, cgs, cgb) in zip(cgdl, cgsl, cgbl)]
+        ss_dict['cdd'] = [cgd + cds + cdb for (cgd, cds, cdb) in zip(cgdl, cdsl, cdbl)]
+        ss_dict['css'] = [cgs + cds + csb for (cgs, cds, csb) in zip(cgsl, cdsl, csbl)]
+
+        return fun_table
 
     @property
     def width_list(self):
@@ -100,17 +147,12 @@ class MOSDBDiscrete(object):
     def dsn_params(self):
         # type: () -> Tuple[str, ...]
         """List of design parameters."""
-        return self._sim_list[self._cur_idx].swp_var_list
-
-    def get_default_dsn_value(self, var):
-        # type: (str) -> Any
-        """Returns the default design parameter values."""
-        return self._sim_list[self._cur_idx].get_default_dsn_value(var)
+        return self._manager_list[self._cur_idx].swp_var_list
 
     def get_dsn_param_values(self, var):
         # type: (str) -> List[Any]
         """Returns a list of valid design parameter values."""
-        return self._sim_list[self._cur_idx].get_swp_var_values(var)
+        return self._manager_list[self._cur_idx].get_swp_var_values(var)
 
     def set_dsn_params(self, **kwargs):
         # type: (**kwargs) -> None
@@ -123,8 +165,9 @@ class MOSDBDiscrete(object):
         # type: (**kwargs) -> str
         if kwargs:
             self.set_dsn_params(**kwargs)
-        dsn_name = self._sim_list[self._cur_idx].get_design_name(self._dsn_params)
 
+        combo_list = tuple(self._dsn_params[var] for var in self.dsn_params)
+        dsn_name = self._manager_list[self._cur_idx].get_design_name(combo_list)
         if dsn_name not in self._ss_list[self._cur_idx]:
             raise ValueError('Unknown design name: %s.  Did you set design parameters?' % dsn_name)
 
