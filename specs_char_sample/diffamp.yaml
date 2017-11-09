@@ -80,7 +80,6 @@ measurements:
     meas_class: 'AmpCharAC'
     out_fname: 'ac.yaml'
     amp_outputs: ['vout_ac']
-    add_outputs: []
     testbenches:
       ac:
         tb_lib: 'bag_testbenches_ec'
@@ -102,7 +101,7 @@ measurements:
           no_cload: True
 
         wrapper_type: 'dm'
-
+        outputs: {}
         vdd: 1.0
         fstart: 1.0e+3
         fstop: 1.0e+10

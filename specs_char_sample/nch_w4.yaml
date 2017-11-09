@@ -43,18 +43,19 @@ layout_params:
 
 dut_wrappers: []
 
-
 env_list: ['tt']
 
 measurements:
   - meas_type: 'mos_ss'
     meas_package: 'verification_ec.mos.sim'
-    meas_class: 'MosCharSS'
+    meas_class: 'MOSCharSS'
     out_fname: 'mos_ss.yaml'
     is_nmos: True
     fg: 20
     testbenches:
       ibias:
+        tb_package: 'verification_ec.mos.sim'
+        tb_class: 'MOSIdTB'
         tb_lib: 'bag_testbenches_ec'
         tb_cell: 'mos_tb_ibias'
         sch_params: {}
@@ -65,6 +66,8 @@ measurements:
         ibias_max_fg: 200.0e-6
         vgs_resolution: 4.0e-3
       sp:
+        tb_package: 'verification_ec.mos.sim'
+        tb_class: 'MOSSPTB'
         tb_lib: 'bag_testbenches_ec'
         tb_cell: 'mos_tb_sp'
         sch_params: {}
