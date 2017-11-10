@@ -1,3 +1,3 @@
 # -*- coding: utf-8 -*-
 
-"""This package contains measurement classes based on AC simulations."""
+"""This package contains measurement/testbench classes based on AC simulations."""
