@@ -204,12 +204,12 @@ def find_load_bias(pch_db, vdd, vout, vgsp_min, vgsp_max, itarg, seg_load, fun_i
 
 
 def design(amp_char_specs_out_fname):
-    nch_config = 'specs_mos_char/nch_w0d5.yaml'
-    pch_config = 'specs_mos_char/pch_w0d5.yaml'
     amp_dsn_specs_fname = 'specs_design/diffamp_paper.yaml'
     amp_char_specs_fname = 'specs_char/diffamp_paper.yaml'
 
     amp_dsn_specs = read_yaml(amp_dsn_specs_fname)
+    nch_config = amp_dsn_specs['nch_config']
+    pch_config = amp_dsn_specs['pch_config']
 
     print('create transistor database')
     nch_db = MOSDBDiscrete([nch_config])
