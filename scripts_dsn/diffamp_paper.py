@@ -11,7 +11,7 @@ import scipy.optimize as sciopt
 from bag.io import read_yaml
 from bag.util.search import BinaryIterator
 
-from ckt_dsn_ec.mos.core import MOSDBDiscrete
+from verification_ec.mos.query import MOSDBDiscrete
 
 
 def design_amp(amp_specs, nch_db, pch_db):

@@ -25,9 +25,9 @@ layout_params:
   lch: 20.0e-9
   ptap_w: 6
   ntap_w: 6
-  w_dict: {in: 4, load: 4, sw: 4, tail: 4}
-  th_dict: {in: 'standard', load: 'standard', sw: 'standard', tail: 'standard'}
-  seg_dict: {in: 4, load: 4, sw: 4, tail: 4}
+  w_dict: {in: 4, load: 4, tail: 4}
+  th_dict: {in: 'standard', load: 'standard', tail: 'standard'}
+  seg_dict: {in: 4, load: 4, tail: 4}
   fg_dum: 4
   flip_out_sd: False
   guard_ring_nf: 0
@@ -76,10 +76,9 @@ env_list: ['tt']
 
 measurements:
   - meas_type: 'ac'
-    meas_package: 'verification_ec.ac.core'
+    meas_package: 'verification_ec.ac.amp'
     meas_class: 'AmpCharAC'
     out_fname: 'ac.yaml'
-    amp_outputs: ['vout_ac']
     testbenches:
       ac:
         tb_lib: 'bag_testbenches_ec'
@@ -101,8 +100,14 @@ measurements:
           no_cload: True
 
         wrapper_type: 'dm'
-        outputs: {}
-        vdd: 1.0
         fstart: 1.0e+3
         fstop: 1.0e+10
         fndec: 50
+        sim_vars:
+          vdd: 1.0
+          vload: 0.5
+          vtail: 0.5
+          vindc: 0.5
+        sim_vars_env: {}
+        sim_outputs:
+          vout: 'getData("/vout" ?result "ac")'
