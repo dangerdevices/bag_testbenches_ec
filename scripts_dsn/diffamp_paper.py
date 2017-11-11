@@ -11,6 +11,7 @@ import scipy.optimize as sciopt
 
 from bag.core import BagProject
 from bag.io import read_yaml, open_file
+from bag.io.sim_data import load_sim_file
 from bag.util.search import BinaryIterator
 from bag.simulation.core import DesignManager
 
@@ -137,7 +138,7 @@ def design_amp(amp_specs, nch_db, pch_db):
     seg_tail, vbias = find_tail_bias(fun_ibiasn, nch_db, vtail, vgsn_min, vgsn_max, seg_in, ibias_opt)
 
     return dict(
-        ibias=ibias_opt,
+        ibias=2 * ibias_opt,
         gain=gain_opt,
         bw=bw_opt,
         seg_in=seg_in,
@@ -235,9 +236,15 @@ def design(amp_char_specs_out_fname):
 def simulate(prj, specs_fname):
     # simulate and report result
     sim = DesignManager(prj, specs_fname)
-    # sim.characterize_designs(generate=True, measure=True)
-    sim.characterize_designs(generate=False, measure=True, load_from_file=True)
+    sim.characterize_designs(generate=True, measure=True, load_from_file=False)
     # sim.test_layout(gen_sch=False)
+
+    for dsn_name in sim.get_dsn_name_iter():
+        summary = sim.get_result(dsn_name)
+        fname = summary['ac']['gain_w3db_file']
+        result = load_sim_file(fname)
+        print('%s gain = %.4g' % (dsn_name, result['gain_vout']))
+        print('%s w3db = %.4g' % (dsn_name, result['w3db_vout']))
 
 
 def run_main(prj):

@@ -95,7 +95,7 @@ measurements:
             outdc: 'voutdc'
           vbias_dict:
             INDC: !!python/tuple ['vindc', 'VSS', 'vindc', {acm: '0'}]
-            INAC: !!python/tuple ['vin', 'vindc', '0', {acm: '1'}]
+            INAC: !!python/tuple ['vin', 'VSS', '0', {acm: '1'}]
             LOAD: !!python/tuple ['vload', 'VSS', 'vload', {acm: '0'}]
             TAIL: !!python/tuple ['vtail', 'VSS', 'vtail', {acm: '0'}]
           ibias_dict: {}

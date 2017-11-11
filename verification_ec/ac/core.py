@@ -136,7 +136,7 @@ class ACTB(TestbenchManager):
         w3db_list = []
         for idx in range(num_swp):
             fun = interp.interp1d(freq_log, diff_arr[idx, :], kind='cubic', copy=False, assume_sorted=True)
-            w3db_list.append(cls._get_intersect(fun, freq_log[0], freq_log_max[idx]))
+            w3db_list.append(10.0**(cls._get_intersect(fun, freq_log[0], freq_log_max[idx])))
 
         return gain_arr, np.array(w3db_list).reshape(gain_arr.shape)
 
