@@ -88,7 +88,7 @@ class ACTB(TestbenchManager):
             swp_params = swp_info[out_name]
             freq_idx = swp_params.index('freq')
             new_swp_params = [par for par in swp_params if par != 'freq']
-            gain_arr, w3db_arr = cls._compute_gain_and_w3db(f_vec, out_arr, freq_idx)
+            gain_arr, w3db_arr = cls._compute_gain_and_w3db(f_vec, np.abs(out_arr), freq_idx)
             cls.record_array(output_dict, data, gain_arr, 'gain_' + out_name, new_swp_params)
             cls.record_array(output_dict, data, w3db_arr, 'w3db_' + out_name, new_swp_params)
 

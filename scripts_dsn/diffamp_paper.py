@@ -194,7 +194,7 @@ def find_load_bias(pch_db, vdd, vout, vgsp_min, vgsp_max, itarg, seg_load, fun_i
     return vbias_opt, 0
 
 
-def run_main(prj):
+def design(amp_char_specs_out_fname):
     nch_config = 'specs_mos_char/nch_w4_amp.yaml'
     pch_config = 'specs_mos_char/pch_w4_amp.yaml'
     amp_dsn_specs_fname = 'specs_design/diffamp_paper.yaml'
@@ -228,13 +228,22 @@ def run_main(prj):
     for key in ('in', 'load', 'tail'):
         seg_dict[key] = result['seg_' + key]
 
-    with open_file(amp_char_specs_fname, 'w') as f:
+    with open_file(amp_char_specs_out_fname, 'w') as f:
         yaml.dump(amp_char_specs, f)
 
+
+def simulate(prj, specs_fname):
     # simulate and report result
-    sim = DesignManager(prj, amp_char_specs_fname)
-    sim.characterize_designs(generate=True, measure=True)
+    sim = DesignManager(prj, specs_fname)
+    # sim.characterize_designs(generate=True, measure=True)
+    sim.characterize_designs(generate=False, measure=True, load_from_file=True)
     # sim.test_layout(gen_sch=False)
+
+
+def run_main(prj):
+    amp_char_specs_out_fname = 'specs_char/diffamp_paper_mod.yaml'
+    design(amp_char_specs_out_fname)
+    simulate(prj, amp_char_specs_out_fname)
 
 
 if __name__ == '__main__':
