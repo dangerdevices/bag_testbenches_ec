@@ -12,7 +12,7 @@ import scipy.optimize as sciopt
 from bag.core import BagProject
 from bag.io import read_yaml, open_file
 from bag.io.sim_data import load_sim_file
-from bag.util.search import BinaryIterator
+from bag.util.search import BinaryIterator, minimize_cost_golden_float
 from bag.simulation.core import DesignManager
 
 from verification_ec.mos.query import MOSDBDiscrete
@@ -24,7 +24,6 @@ def design_amp(amp_specs, nch_db, pch_db):
     vtail = amp_specs['vtail']
     vgs_res = amp_specs['vgs_res']
     gain_min = amp_specs['gain_min']
-    gain_margin = amp_specs['gain_margin']
     bw_min = amp_specs['bw_min']
     cload = amp_specs['cload']
 
@@ -45,13 +44,11 @@ def design_amp(amp_specs, nch_db, pch_db):
 
     vgsp_idx = pch_db.get_fun_arg_index('vgs')
     vgsp_min, vgsp_max = fun_ibiasp.get_input_range(vgsp_idx)
-
     # sweep vgs, find best point
     performance = None
     for vgsn_cur in vgs_list:
         vout = vgsn_cur + vtail
 
-        seg_in_iter = BinaryIterator(2, None, step=2)
         narg = nch_db.get_fun_arg(vgs=vgsn_cur, vds=vgsn_cur, vbs=vtail)
         ibiasn_unit = fun_ibiasn(narg)
         gmn_unit = fun_gmn(narg)
@@ -59,15 +56,25 @@ def design_amp(amp_specs, nch_db, pch_db):
         cdn_unit = fun_cdn(narg)
         cgsn_unit = fun_cgsn(narg)
 
-        # check there's gain solution
-        parg = pch_db.get_fun_arg(vgs=vgsp_min, vds=vout - vdd, vbs=0)
-        ibiasp_unit_test = fun_ibiasp(parg)
-        gdsp_unit_test = fun_gdsp(parg)
-        gain_max = gmn_unit / ibiasn_unit / (gdsn_unit / ibiasn_unit + gdsp_unit_test / ibiasp_unit_test)
-        if gain_max < gain_min + gain_margin:
-            continue
+        # find max gain
+        def gain_fun1(vgsp_test):
+            parg_test = pch_db.get_fun_arg(vgs=vgsp_test, vds=vout - vdd, vbs=0)
+            ibiasp_unit_test = fun_ibiasp(parg_test)
+            gdsp_unit_test = fun_gdsp(parg_test)
+            return gmn_unit / ibiasn_unit / (gdsn_unit / ibiasn_unit + gdsp_unit_test / ibiasp_unit_test)
 
+        result = minimize_cost_golden_float(gain_fun1, gain_min, vgsp_min, vgsp_max, tol=vgs_res / 10)
+        opt_vgsp = result.x
+        if opt_vgsp is None:
+            print('vgsn = %.4g, max gain: %.4g' % (vgsn_cur, result.vmax))
+            break
+
+        # get number of input fingers needed to achieve gain_max with minimum number of load fingers
+        seg_in_init = fun_ibiasp(pch_db.get_fun_arg(vgs=opt_vgsp, vds=vout - vdd, vbs=0)) * 2 / ibiasn_unit
+        seg_in_init = int(round(seg_in_init / 2)) * 2
         # sweep gm size
+        seg_in_iter = BinaryIterator(2, None, step=2)
+        seg_in_iter.set_current(seg_in_init)
         while seg_in_iter.has_next():
             seg_in = seg_in_iter.get_next()
             ibiasn = seg_in * ibiasn_unit
@@ -147,6 +154,7 @@ def design_amp(amp_specs, nch_db, pch_db):
         vtail=vbias,
         vindc=vio,
         vload=vload,
+        vgs_in=vgs_in,
     )
 
 
@@ -196,8 +204,8 @@ def find_load_bias(pch_db, vdd, vout, vgsp_min, vgsp_max, itarg, seg_load, fun_i
 
 
 def design(amp_char_specs_out_fname):
-    nch_config = 'specs_mos_char/nch_w4_amp.yaml'
-    pch_config = 'specs_mos_char/pch_w4_amp.yaml'
+    nch_config = 'specs_mos_char/nch_w0d5.yaml'
+    pch_config = 'specs_mos_char/pch_w0d5.yaml'
     amp_dsn_specs_fname = 'specs_design/diffamp_paper.yaml'
     amp_char_specs_fname = 'specs_char/diffamp_paper.yaml'
 
@@ -250,7 +258,7 @@ def simulate(prj, specs_fname):
 def run_main(prj):
     amp_char_specs_out_fname = 'specs_char/diffamp_paper_mod.yaml'
     design(amp_char_specs_out_fname)
-    simulate(prj, amp_char_specs_out_fname)
+    # simulate(prj, amp_char_specs_out_fname)
 
 
 if __name__ == '__main__':

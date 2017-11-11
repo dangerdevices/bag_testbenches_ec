@@ -171,7 +171,7 @@ class MOSSPTB(TestbenchManager):
         swp_corner = ('corner' in data)
         if not swp_corner:
             data = data.copy()
-            data['corner'] = [self.env_list[0]]
+            data['corner'] = np.array([self.env_list[0]])
 
         # rearrange array axis
         swp_vars = data['sweep_params']['ibias']

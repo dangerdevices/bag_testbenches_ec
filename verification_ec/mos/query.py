@@ -93,7 +93,7 @@ class MOSDBDiscrete(object):
 
         self._env_list = self._sim_envs
         self._cur_idx = 0
-        self._dsn_params = dict(w=self._width_list[0])
+        self._dsn_params = dict(w=self._width_list[0] * self._width_res)
 
     @classmethod
     def _make_ss_functions(cls, ss_dict, corners, swp_names, interp_method):
