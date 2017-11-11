@@ -49,30 +49,9 @@ class AmpCharAC(MeasurementManager):
         done = True
         next_state = ''
 
-        if state == 'ibias':
-            done = False
-            next_state = 'sp'
-            vgs_range = tb_manager.get_vgs_range(data)
-            output = dict(vgs_range=vgs_range)
-        elif state == 'sp':
-            testbenches = self.specs['testbenches']
-            if 'noise' in testbenches:
-                done = False
-                next_state = 'noise'
-            else:
-                done = True
-                next_state = ''
-
-            ss_params = tb_manager.get_ss_params(data)
-            # save SS parameters
-            file_name = os.path.join(self.data_dir, 'ss_params.hdf5')
-            save_sim_results(ss_params, file_name)
-            output = dict(ss_file=file_name)
-        elif state == 'noise':
-            done = True
-            next_state = ''
-            output = dict(noise_file='')
-        else:
-            raise ValueError('Unknown state: %s' % state)
+        gain_w3db_results = tb_manager.get_gain_and_w3db(data, tb_manager.get_outputs())
+        file_name = os.path.join(self.data_dir, 'gain_w3db.hdf5')
+        save_sim_results(gain_w3db_results, file_name)
+        output = dict(gain_w3db_file=file_name)
 
         return done, next_state, output

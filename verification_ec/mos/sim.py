@@ -169,27 +169,22 @@ class MOSSPTB(TestbenchManager):
 
         ss_swp_names = [name for name in axis_names[1:] if name in data]
         swp_corner = ('corner' in data)
-        if swp_corner:
-            corner_list = data['corner']
-        else:
-            corner_list = [self.env_list[0]]
+        if not swp_corner:
+            data = data.copy()
+            data['corner'] = [self.env_list[0]]
 
         # rearrange array axis
         swp_vars = data['sweep_params']['ibias']
         order = [swp_vars.index(name) for name in axis_names if name in swp_vars]
 
         # construct new SS parameter result dictionary
-        new_swp_info = {}
         new_swp_vars = ['corner', ] + ss_swp_names
-        new_result = {'sweep_params': new_swp_info, 'corner': corner_list}
-        for name in ss_swp_names:
-            new_result[name] = data[name]
+        new_result = {}
         for key, val in ss_dict.items():
             new_data = np.transpose(val, axes=order)
             if not swp_corner:
                 new_data = new_data[np.newaxis, ...]
-            new_swp_info[key] = new_swp_vars
-            new_result[key] = new_data
+            self.record_array(new_result, data, new_data, key, new_swp_vars)
 
         return new_result
 

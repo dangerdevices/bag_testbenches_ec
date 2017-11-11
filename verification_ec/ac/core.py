@@ -5,6 +5,8 @@
 from typing import TYPE_CHECKING, List, Tuple, Dict, Any, Sequence
 
 import numpy as np
+import scipy.interpolate as interp
+import scipy.optimize as sciopt
 
 from bag.simulation.core import TestbenchManager
 
@@ -61,22 +63,86 @@ class ACTB(TestbenchManager):
             return []
         return list(sim_outputs.keys())
 
-    def get_gain_and_w3db(self, f_vec, out_arr, swp_params):
-        """Compute the DC gain and bandwidth of the amplifier given output.
+    @classmethod
+    def get_gain_and_w3db(cls, data, output_list):
+        # type: (Dict[str, Any], List[str]) -> Dict[str, Any]
+        """Returns a dictionary of gain and 3db bandwidth information.
+
+        Parameters
+        ----------
+        data : Dict[str, Any]
+            the simulation data dictionary.
+        output_list : Sequence[str]
+            list of output names to compute gain/bandwidth for.
+
+        Returns
+        -------
+        output_dict : Dict[str, Any]
+            A BAG data dictionary containing the gain/bandwidth information.
+        """
+        output_dict = {}
+        swp_info = data['sweep_params']
+        f_vec = data['freq']
+        for out_name in output_list:
+            out_arr = data[out_name]
+            swp_params = swp_info[out_name]
+            freq_idx = swp_params.index('freq')
+            new_swp_params = [par for par in swp_params if par != 'freq']
+            gain_arr, w3db_arr = cls._compute_gain_and_w3db(f_vec, out_arr, freq_idx)
+            cls.record_array(output_dict, data, gain_arr, 'gain_' + out_name, new_swp_params)
+            cls.record_array(output_dict, data, w3db_arr, 'w3db_' + out_name, new_swp_params)
+
+        return output_dict
+
+    @classmethod
+    def _compute_gain_and_w3db(cls, f_vec, out_arr, freq_idx):
+        # type: (np.ndarray, np.ndarray, int) -> Tuple[np.ndarray, np.ndarray]
+        """Compute the DC gain and bandwidth of the amplifier given output array.
+
+        Parmeters
+        ---------
+        f_vec : np.ndarray
+            the frequency vector.  Must be sorted.
+        out_arr : np.ndarray
+            the amplifier output transfer function.  Could be multidimensional.
+        freq_idx : int
+            frequency axis index.
+
+        Returns
+        -------
+        gain_arr : np.ndarray
+            the DC gain array.
+        w3db_arr : np.ndarray
+            the 3db bandwidth array.  Contains NAN if the transfer function never
+            intersect the gain.
         """
         # move frequency axis to last axis
-        freq_idx = swp_params.index('freq')
         out_arr = np.moveaxis(out_arr, freq_idx, -1)
         gain_arr = out_arr[..., 0]
 
-        out_log = 20 * np.log10(out_arr)
-        gain_log_3db = 20 * np.log10(gain_arr) - 3
-
+        # convert
+        orig_shape = out_arr.shape
+        num_pts = orig_shape[-1]
+        out_log = 20 * np.log10(out_arr.reshape(-1, num_pts))
+        gain_log_3db = 20 * np.log10(gain_arr.reshape(-1)) - 3
 
         # find first index at which gain goes below gain_log 3db
-        diff_arr = out_log - gain_log_3db[..., np.newaxis]
-        idx_arr = np.argmax(diff_arr < 0, axis=-1)
+        diff_arr = out_log - gain_log_3db[:, np.newaxis]
+        idx_arr = np.argmax(diff_arr < 0, axis=1)
         freq_log = np.log10(f_vec)
         freq_log_max = freq_log[idx_arr]
 
-        
+        num_swp = out_log.shape[0]
+        w3db_list = []
+        for idx in range(num_swp):
+            fun = interp.interp1d(freq_log, diff_arr[idx, :], kind='cubic', copy=False, assume_sorted=True)
+            w3db_list.append(cls._get_intersect(fun, freq_log[0], freq_log_max[idx]))
+
+        return gain_arr, np.array(w3db_list).reshape(gain_arr.shape)
+
+    @classmethod
+    def _get_intersect(cls, fun, xmin, xmax):
+        try:
+            return sciopt.brentq(fun, xmin, xmax)
+        except ValueError:
+            return np.NAN
