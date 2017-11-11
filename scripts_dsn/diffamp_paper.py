@@ -5,11 +5,14 @@
 import math
 import pprint
 
+import yaml
 import numpy as np
 import scipy.optimize as sciopt
 
-from bag.io import read_yaml
+from bag.core import BagProject
+from bag.io import read_yaml, open_file
 from bag.util.search import BinaryIterator
+from bag.simulation.core import DesignManager
 
 from verification_ec.mos.query import MOSDBDiscrete
 
@@ -140,8 +143,8 @@ def design_amp(amp_specs, nch_db, pch_db):
         seg_in=seg_in,
         seg_load=seg_load,
         seg_tail=seg_tail,
-        vbias=vbias,
-        vio=vio,
+        vtail=vbias,
+        vindc=vio,
         vload=vload,
     )
 
@@ -191,26 +194,57 @@ def find_load_bias(pch_db, vdd, vout, vgsp_min, vgsp_max, itarg, seg_load, fun_i
     return vbias_opt, 0
 
 
-def run_main():
+def run_main(prj):
     nch_config = 'specs_mos_char/nch_w4_amp.yaml'
     pch_config = 'specs_mos_char/pch_w4_amp.yaml'
-    amp_specs = 'specs_design/diffamp_paper.yaml'
+    amp_dsn_specs_fname = 'specs_design/diffamp_paper.yaml'
+    amp_char_specs_fname = 'specs_char/diffamp_paper.yaml'
 
-    amp_specs = read_yaml(amp_specs)
+    amp_dsn_specs = read_yaml(amp_dsn_specs_fname)
 
     print('create transistor database')
     nch_db = MOSDBDiscrete([nch_config])
     pch_db = MOSDBDiscrete([pch_config])
 
-    nch_db.set_dsn_params(**amp_specs['nch'])
-    pch_db.set_dsn_params(**amp_specs['pch'])
+    nch_db.set_dsn_params(**amp_dsn_specs['nch'])
+    pch_db.set_dsn_params(**amp_dsn_specs['pch'])
 
-    result = design_amp(amp_specs, nch_db, pch_db)
+    result = design_amp(amp_dsn_specs, nch_db, pch_db)
     if result is None:
-        print('No solution.')
-    else:
-        pprint.pprint(result)
+        raise ValueError('No solution.')
+
+    pprint.pprint(result)
+
+    # update characterization spec file
+    amp_char_specs = read_yaml(amp_char_specs_fname)
+    # update bias
+    var_dict = amp_char_specs['measurements'][0]['testbenches']['ac']['sim_vars']
+    for key in ('vload', 'vtail', 'vindc'):
+        var_dict[key] = result[key]
+    for key in ('vdd', 'cload'):
+        var_dict[key] = amp_dsn_specs[key]
+    # update segments
+    seg_dict = amp_char_specs['layout_params']['seg_dict']
+    for key in ('in', 'load', 'tail'):
+        seg_dict[key] = result['seg_' + key]
+
+    with open_file(amp_char_specs_fname, 'w') as f:
+        yaml.dump(amp_char_specs, f)
+
+    # simulate and report result
+    sim = DesignManager(prj, amp_char_specs_fname)
+    sim.characterize_designs(generate=True, measure=True)
+    # sim.test_layout(gen_sch=False)
 
 
 if __name__ == '__main__':
-    run_main()
+    local_dict = locals()
+    if 'bprj' not in local_dict:
+        print('creating BAG project')
+        bprj = BagProject()
+
+    else:
+        print('loading BAG project')
+        bprj = local_dict['bprj']
+
+    run_main(bprj)

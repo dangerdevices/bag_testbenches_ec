@@ -43,12 +43,27 @@ class bag_testbenches_ec__dut_wrapper_dm(Module):
     """A class that wraps a differential DUT to single-ended.
     """
 
-    param_list = ['dut_lib', 'dut_cell', 'balun_list', 'cap_list', 'pin_list', 'dut_conns']
-
     def __init__(self, bag_config, parent=None, prj=None, **kwargs):
         Module.__init__(self, bag_config, yaml_file, parent=parent, prj=prj, **kwargs)
-        for par in self.param_list:
-            self.parameters[par] = None
+
+    @classmethod
+    def get_params_info(cls):
+        # type: () -> Dict[str, str]
+        """Returns a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : Optional[Dict[str, str]]
+            dictionary from parameter names to descriptions.
+        """
+        return dict(
+            dut_lib='DUT library name.',
+            dut_cell='DUT cell name.',
+            balun_list='list of baluns to create.',
+            cap_list='list of load capacitances.',
+            pin_list='list of input/output pins.',
+            dut_conns='DUT connection dictionary.',
+        )
 
     def design(self,  # type: bag_testbenches_ec__dut_wrapper_dm
                dut_lib='',  # type: str
@@ -100,12 +115,6 @@ class bag_testbenches_ec__dut_wrapper_dm(Module):
             raise ValueError('pin_list cannot be None or empty.')
         if not dut_conns:
             raise ValueError('dut_conns cannot be None or empty.')
-
-        local_dict = locals()
-        for name in self.param_list:
-            if name not in local_dict:
-                raise ValueError('Parameter %s not specified.' % name)
-            self.parameters[name] = local_dict[name]
 
         # delete default input/output pins
         for pin_name in ('inac', 'indc', 'outac', 'outdc'):

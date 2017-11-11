@@ -81,6 +81,8 @@ measurements:
     out_fname: 'ac.yaml'
     testbenches:
       ac:
+        tb_package: 'verification_ec.ac.core'
+        tb_class: 'ACTB'
         tb_lib: 'bag_testbenches_ec'
         tb_cell: 'amp_tb_ac'
         sch_params:
@@ -108,6 +110,7 @@ measurements:
           vload: 0.5
           vtail: 0.5
           vindc: 0.5
+          cload: 1.0e-15
         sim_vars_env: {}
         sim_outputs:
           vout: 'getData("/vout" ?result "ac")'
