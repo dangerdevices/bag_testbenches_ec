@@ -263,6 +263,9 @@ def run_main(prj):
     amp_char_specs_fname = 'specs_char/diffamp_paper.yaml'
     amp_char_specs_out_fname = 'specs_char/diffamp_paper_mod.yaml'
 
+    # simulate(prj, amp_char_specs_out_fname)
+    # return
+
     amp_dsn_specs = read_yaml(amp_dsn_specs_fname)
     gain_min_orig = amp_dsn_specs['gain_min']
     bw_min_orig = amp_dsn_specs['bw_min']

@@ -104,8 +104,8 @@ measurements:
           no_cload: True
 
         wrapper_type: 'dm'
-        fstart: 1.0e+3
-        fstop: 1.0e+10
+        fstart: 1.0e+4
+        fstop: 1.0e+12
         fndec: 50
         sim_vars:
           vdd: 1.0
