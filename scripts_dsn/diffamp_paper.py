@@ -204,11 +204,7 @@ def find_load_bias(pch_db, vdd, vout, vgsp_min, vgsp_max, itarg, seg_load, fun_i
     return vbias_opt, 0
 
 
-def design(amp_char_specs_out_fname):
-    amp_dsn_specs_fname = 'specs_design/diffamp_paper.yaml'
-    amp_char_specs_fname = 'specs_char/diffamp_paper.yaml'
-
-    amp_dsn_specs = read_yaml(amp_dsn_specs_fname)
+def design(amp_dsn_specs, amp_char_specs_fname, amp_char_specs_out_fname):
     nch_config = amp_dsn_specs['nch_config']
     pch_config = amp_dsn_specs['pch_config']
 
@@ -241,6 +237,8 @@ def design(amp_char_specs_out_fname):
     with open_file(amp_char_specs_out_fname, 'w') as f:
         yaml.dump(amp_char_specs, f)
 
+    return result
+
 
 def simulate(prj, specs_fname):
     # simulate and report result
@@ -248,18 +246,49 @@ def simulate(prj, specs_fname):
     sim.characterize_designs(generate=True, measure=True, load_from_file=False)
     # sim.test_layout(gen_sch=False)
 
-    for dsn_name in sim.get_dsn_name_iter():
-        summary = sim.get_result(dsn_name)
-        fname = summary['ac']['gain_w3db_file']
-        result = load_sim_file(fname)
-        print('%s gain = %.4g' % (dsn_name, result['gain_vout']))
-        print('%s w3db = %.4g' % (dsn_name, result['w3db_vout']))
+    dsn_name = list(sim.get_dsn_name_iter())[0]
+    summary = sim.get_result(dsn_name)
+    fname = summary['ac']['gain_w3db_file']
+    result = load_sim_file(fname)
+    gain = result['gain_vout']
+    w3db = result['w3db_vout']
+    print('%s gain = %.4g' % (dsn_name, gain))
+    print('%s w3db = %.4g' % (dsn_name, w3db))
+
+    return gain, w3db
 
 
 def run_main(prj):
+    amp_dsn_specs_fname = 'specs_design/diffamp_paper.yaml'
+    amp_char_specs_fname = 'specs_char/diffamp_paper.yaml'
     amp_char_specs_out_fname = 'specs_char/diffamp_paper_mod.yaml'
-    design(amp_char_specs_out_fname)
-    simulate(prj, amp_char_specs_out_fname)
+
+    amp_dsn_specs = read_yaml(amp_dsn_specs_fname)
+    gain_min_orig = amp_dsn_specs['gain_min']
+    bw_min_orig = amp_dsn_specs['bw_min']
+
+    result = None
+    done = False
+    gain, w3db = 0, 0
+    while not done:
+        result = design(amp_dsn_specs, amp_char_specs_fname, amp_char_specs_out_fname)
+        gain, w3db = simulate(prj, amp_char_specs_out_fname)
+
+        if gain >= gain_min_orig and w3db >= bw_min_orig:
+            done = True
+        else:
+            if gain < gain_min_orig:
+                gain_expected = result['gain']
+                gain_scale = gain / gain_expected
+                amp_dsn_specs['gain_min'] = gain_min_orig / gain_scale
+            if w3db < bw_min_orig:
+                bw_expected = result['bw']
+                bw_scale = w3db / bw_expected
+                amp_dsn_specs['bw_min'] = bw_min_orig / bw_scale
+
+    pprint.pprint(result)
+    print('final gain = %.4g' % gain)
+    print('final w3db = %.4g' % w3db)
 
 
 if __name__ == '__main__':
