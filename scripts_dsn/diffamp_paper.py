@@ -153,6 +153,7 @@ def design_amp(amp_specs, nch_db, pch_db):
         seg_tail=seg_tail,
         vtail=vbias,
         vindc=vio,
+        voutdc=vio,
         vload=vload,
         vgs_in=vgs_in,
     )
@@ -228,7 +229,7 @@ def design(amp_char_specs_out_fname):
     amp_char_specs = read_yaml(amp_char_specs_fname)
     # update bias
     var_dict = amp_char_specs['measurements'][0]['testbenches']['ac']['sim_vars']
-    for key in ('vload', 'vtail', 'vindc'):
+    for key in ('vtail', 'vindc', 'voutdc'):
         var_dict[key] = result[key]
     for key in ('vdd', 'cload'):
         var_dict[key] = amp_dsn_specs[key]
@@ -258,7 +259,7 @@ def simulate(prj, specs_fname):
 def run_main(prj):
     amp_char_specs_out_fname = 'specs_char/diffamp_paper_mod.yaml'
     design(amp_char_specs_out_fname)
-    # simulate(prj, amp_char_specs_out_fname)
+    simulate(prj, amp_char_specs_out_fname)
 
 
 if __name__ == '__main__':

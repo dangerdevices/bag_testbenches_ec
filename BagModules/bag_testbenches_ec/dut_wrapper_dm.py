@@ -29,7 +29,7 @@ from builtins import *
 
 import os
 import pkg_resources
-from typing import Tuple, Sequence, Dict, Union
+from typing import Tuple, Sequence, Dict, Union, Any
 
 from bag import float_to_si_string
 from bag.design import Module
@@ -49,20 +49,22 @@ class bag_testbenches_ec__dut_wrapper_dm(Module):
     @classmethod
     def get_params_info(cls):
         # type: () -> Dict[str, str]
-        """Returns a dictionary from parameter names to descriptions.
-
-        Returns
-        -------
-        param_info : Optional[Dict[str, str]]
-            dictionary from parameter names to descriptions.
-        """
         return dict(
             dut_lib='DUT library name.',
             dut_cell='DUT cell name.',
             balun_list='list of baluns to create.',
-            cap_list='list of load capacitances.',
             pin_list='list of input/output pins.',
             dut_conns='DUT connection dictionary.',
+            cap_list='list of load capacitances.',
+            vcvs_list='list of voltage-controlled voltage sources.',
+        )
+
+    @classmethod
+    def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
+        return dict(
+            cap_list=None,
+            vcvs_list=None,
         )
 
     def design(self,  # type: bag_testbenches_ec__dut_wrapper_dm
@@ -72,13 +74,15 @@ class bag_testbenches_ec__dut_wrapper_dm(Module):
                cap_list=None,  # type: Sequence[Tuple[str, str, Union[float, str]]]
                pin_list=None,  # type: Sequence[Tuple[str, str]]
                dut_conns=None,  # type: Dict[str, str]
+               vcvs_list=None,  # type: Sequence[Tuple[str, str, str, str, Dict[str, Any]]]
                ):
         # type: (...) -> None
         """Design this wrapper schematic.
 
         This cell converts a variable number of differential pins to single-ended pins or
         vice-versa, by using ideal_baluns.  It can also create extra pins to be connected
-        to the device.  You can also optionally instantiate capacitive loads for the device.
+        to the device.  You can also optionally instantiate capacitive loads or
+        voltage-controlled voltage sources.
 
         VDD and VSS pins will always be there for primary supplies.  Additional supplies
         can be added as inputOutput pins using the pin_list parameters.  If you don't need
@@ -107,6 +111,9 @@ class bag_testbenches_ec__dut_wrapper_dm(Module):
         dut_conns : Dict[str, str]
             a dictionary from DUT pin name to the net name.  All connections should
             be specified, including VDD and VSS.
+        vcvs_list : Sequence[Tuple[str, str, str, str, Dict[str, Any]]]
+            list of voltage-controlled voltage sources to create.  Represented as a list of
+            (pos, neg, ctrl-pos, ctrl-neg, params) tuples.
         """
         # error checking
         if not balun_list:
@@ -143,16 +150,42 @@ class bag_testbenches_ec__dut_wrapper_dm(Module):
             self.reconnect_instance_terminal(inst_name, 'n', neg, index=idx)
 
         # configure load capacitors
+        inst_name = 'CLOAD'
         if cap_list:
-            inst_name = 'CLOAD'
             num_inst = len(cap_list)
             name_list = ['%s%d' % (inst_name, idx) for idx in range(num_inst)]
             self.array_instance(inst_name, name_list)
             for idx, (pos, neg, val) in enumerate(cap_list):
                 self.reconnect_instance_terminal(inst_name, 'PLUS', pos, index=idx)
                 self.reconnect_instance_terminal(inst_name, 'MINUS', neg, index=idx)
-                if isinstance(val, float) or isinstance(val, int):
+                if isinstance(val, str):
+                    pass
+                elif isinstance(val, float) or isinstance(val, int):
                     val = float_to_si_string(val)
+                else:
+                    raise ValueError('Unknown schematic instance parameter: %s' % val)
                 self.instances[inst_name][idx].parameters['c'] = val
         else:
-            self.delete_instance('CLOAD')
+            self.delete_instance(inst_name)
+
+        # configure vcvs
+        inst_name = 'ECTRL'
+        if vcvs_list:
+            num_inst = len(vcvs_list)
+            name_list = ['%s%d' % (inst_name, idx) for idx in range(num_inst)]
+            self.array_instance(inst_name, name_list)
+            for idx, (pos, neg, cpos, cneg, params) in enumerate(vcvs_list):
+                self.reconnect_instance_terminal(inst_name, 'PLUS', pos, index=idx)
+                self.reconnect_instance_terminal(inst_name, 'MINUS', neg, index=idx)
+                self.reconnect_instance_terminal(inst_name, 'NC+', cpos, index=idx)
+                self.reconnect_instance_terminal(inst_name, 'NC-', cneg, index=idx)
+                for key, val in params.items():
+                    if isinstance(val, str):
+                        pass
+                    elif isinstance(val, float) or isinstance(val, int):
+                        val = float_to_si_string(val)
+                    else:
+                        raise ValueError('Unknown schematic instance parameter: %s' % val)
+                    self.instances[inst_name][idx].parameters[key] = val
+        else:
+            self.delete_instance(inst_name)

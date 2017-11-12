@@ -82,3 +82,23 @@ instances:
         direction: inputOutput
         net_name: "outdc"
         num_bits: 1
+  ECTRL:
+    lib_name: analogLib
+    cell_name: vcvs
+    instpins:
+      NC+:
+        direction: inputOutput
+        net_name: "outdc"
+        num_bits: 1
+      NC-:
+        direction: inputOutput
+        net_name: "VSS"
+        num_bits: 1
+      PLUS:
+        direction: inputOutput
+        net_name: "indc"
+        num_bits: 1
+      MINUS:
+        direction: inputOutput
+        net_name: "VSS"
+        num_bits: 1
