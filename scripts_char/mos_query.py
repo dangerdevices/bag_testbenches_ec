@@ -11,14 +11,18 @@ from matplotlib import ticker
 
 from verification_ec.mos.query import MOSDBDiscrete
 
+interp_method = 'spline'
+spec_file = 'specs_mos_char/pch_w0d7.yaml'
+env_default = 'tt'
+intent = 'standard'
 
-def query(vds, vgs, env_list=None, intent='ulvt', vbs=0.0):
+
+def query(vgs=None, vds=None, vbs=0.0, vstar=None, env_list=None):
     """Get interpolation function and plot/query."""
-    interp_method = 'spline'
-    spec_list = ['specs_mos_char/nch_w4.yaml']
 
+    spec_list = [spec_file]
     if env_list is None:
-        env_list = ['tt']
+        env_list = [env_default]
 
     # initialize transistor database from simulation data
     nch_db = MOSDBDiscrete(spec_list, interp_method=interp_method)
@@ -27,18 +31,16 @@ def query(vds, vgs, env_list=None, intent='ulvt', vbs=0.0):
     # set layout parameters
     nch_db.set_dsn_params(intent=intent)
     # returns a dictionary of smal-signal parameters
-    return nch_db.query(vbs=vbs, vds=vds, vgs=vgs)
+    return nch_db.query(vbs=vbs, vds=vds, vgs=vgs, vstar=vstar)
 
 
 def plot_data(name='ibias', bounds=None, unit_val=None, unit_label=None):
     """Get interpolation function and plot/query."""
-    env_list = ['tt']
-    intent = 'ulvt'
+    env_list = [env_default]
     vbs = 0.0
     nvds = 41
     nvgs = 81
-    interp_method = 'spline'
-    spec_list = ['specs_mos_char/nch_w4.yaml']
+    spec_list = [spec_file]
 
     print('create transistor database')
     nch_db = MOSDBDiscrete(spec_list, interp_method=interp_method)
