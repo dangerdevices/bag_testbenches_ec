@@ -21,8 +21,8 @@ def print_dsn_info(info):
 
 
 if __name__ == '__main__':
-    pch_config = 'mos_char_specs/mos_char_pch_stack_w2.yaml'
-    gm_specs = 'dsn_specs/input_gm.yaml'
+    pch_config = 'specs_mos_char/mos_char_pch_stack_w2.yaml'
+    gm_specs = 'specs_dsn/input_gm.yaml'
 
     noise_fstart = 20e3
     noise_fstop = noise_fstart + 500

@@ -377,7 +377,7 @@ def run_flow(prj, specs, dsn_name, gen_sch=True, run_rcx=True, run_sim=True, plo
 
 
 if __name__ == '__main__':
-    spec_fname = 'layout_specs/opamp_two_stage.yaml'
+    spec_fname = 'specs_layout/opamp_two_stage.yaml'
 
     # load specifications from file
     top_specs = read_yaml(spec_fname)
