@@ -83,23 +83,34 @@ def design_amp(amp_specs, nch_db, pch_db):
             continue
 
         # compute total scale factor and number of input/load fingers
-        k = w3db_min * cload / (gdsp_unit + gdsn_unit - w3db_min * (cdn_unit + cdp_unit))
-        seg_in = int(math.ceil(k / 2)) * 2
-        seg_load = int(math.ceil(kp * seg_in / 2)) * 2
-        kp = seg_load / seg_in
-        # update kp and pmos SS parameters
-        vbp, _ = find_load_bias(pch_db, vdd, vout, vgsp_min, vgsp_max, seg_in * ibiasn_unit, seg_load, fun_ibiasp)
-        parg = pch_db.get_fun_arg(vgs=vbp - vdd, vds=vout - vdd, vbs=0)
-        gdsp_unit = fun_gdsp(parg) * kp
-        cdp_unit = fun_cdp(parg) * kp
+        bw_cur = 0
+        seg_load = 0
+        vbp = 0
+        while bw_cur < bw_min:
+            k = w3db_min * cload / (gdsp_unit + gdsn_unit - w3db_min * (cdn_unit + cdp_unit))
 
-        # recompute gain/bandwidth
+            seg_in = int(math.ceil(k / 2)) * 2
+            seg_load = max(2, int(math.ceil(kp * k / 2)) * 2)
+            # update kp and pmos SS parameters
+            vbp, _ = find_load_bias(pch_db, vdd, vout, vgsp_min, vgsp_max, seg_in * ibiasn_unit, seg_load, fun_ibiasp)
+            while vbp is None:
+                seg_load += 2
+                # update kp and pmos SS parameters
+                vbp, _ = find_load_bias(pch_db, vdd, vout, vgsp_min, vgsp_max, seg_in * ibiasn_unit, seg_load, fun_ibiasp)
+            kp = seg_load / seg_in
+
+            parg = pch_db.get_fun_arg(vgs=vbp - vdd, vds=vout - vdd, vbs=0)
+            gdsp_unit = fun_gdsp(parg) * kp
+            cdp_unit = fun_cdp(parg) * kp
+
+            # recompute gain/bandwidth
+            bw_cur = (gdsp_unit + gdsn_unit) * seg_in / (2 * np.pi * (seg_in * (cdp_unit + cdn_unit) + cload))
+
         gain_cur = gmn_unit / (gdsp_unit + gdsn_unit)
-        bw_cur = (gdsp_unit + gdsn_unit) * seg_in / (2 * np.pi * (seg_in * (cdp_unit + cdn_unit) + cload))
-        ibias_tot = 2 * seg_in * ibiasn_unit
+        ibias_cur = seg_in * ibiasn_unit
 
-        if performance is None or performance[0] > ibias_tot:
-            performance = (ibias_tot, gain_cur, bw_cur, seg_in, seg_load, vgsn_cur, vbp)
+        if performance is None or performance[0] > ibias_cur:
+            performance = (ibias_cur, gain_cur, bw_cur, seg_in, seg_load, vgsn_cur, vbp)
 
     if performance is None:
         return None
@@ -239,7 +250,6 @@ def run_main(prj):
     gain, w3db = 0, 0
     while not done:
         result = design(amp_dsn_specs, amp_char_specs_fname, amp_char_specs_out_fname)
-        break
         gain, w3db = simulate(prj, amp_char_specs_out_fname)
 
         if gain >= gain_min_orig and w3db >= bw_min_orig:
