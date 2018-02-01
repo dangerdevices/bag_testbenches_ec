@@ -41,6 +41,16 @@ layout_params:
     sb: 1
     db: 1
 
+# Used only if we're doing schematic-only simulation
+schematic_params:
+  mos_type: 'pch'
+  lch: 20.0e-9
+  w: 4
+  fg: 20
+  intent: 'svt'
+  stack: 1
+  dum_info: !!null
+
 dut_wrappers: []
 
 env_list: ['tt']

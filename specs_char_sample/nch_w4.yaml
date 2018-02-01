@@ -23,7 +23,7 @@ sweep_params:
 
 layout_params:
   mos_type: 'nch'
-  lch: !!float 20e-9
+  lch: 20.0e-9
   w: 4
   fg: 20
   intent: 'svt'
@@ -40,6 +40,16 @@ layout_params:
     gd: 1
     sb: 1
     db: 1
+
+# Used only if we're doing schematic-only simulation
+schematic_params:
+  mos_type: 'nch'
+  lch: 20.0e-9
+  w: 4
+  fg: 20
+  intent: 'svt'
+  stack: 1
+  dum_info: !!null
 
 dut_wrappers: []
 
