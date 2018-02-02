@@ -351,11 +351,10 @@ class MOSNoiseTB(TestbenchManager):
         cur_points = [np.arange(len(corner_list))]
         cur_points.extend((data[name] for name in ss_swp_names))
         cur_points[-1] = log_freq
-        delta_list = [1e-6] * len(ss_swp_names)
-        delta_list[-1] = 1e-3
 
         # rearrange array axis
         swp_vars = data['sweep_params']['idn']
+        new_swp_vars = ['corner', ] + ss_swp_names[:-1]
         order = [swp_vars.index(name) for name in axis_names if name in swp_vars]
         idn = np.transpose(idn, axes=order)
         if not swp_corner:
@@ -368,10 +367,11 @@ class MOSNoiseTB(TestbenchManager):
 
         # rearrange array axis
         idn = np.log(scale / fg * (idn ** 2))
+        delta_list = [1e-6] * len(new_swp_vars)
+        delta_list[-1] = 1e-3
         noise_fun = LinearInterpolator(cur_points, idn, delta_list, extrapolate=True)
         integ_noise = noise_fun.integrate(fstart_log, fstop_log, axis=-1, logx=True, logy=True, raw=True)
 
-        new_swp_vars = ['corner', ] + ss_swp_names[:-1]
         gamma = integ_noise / (4.0 * 1.38e-23 * temp * ss_data['gm'] * (fstop - fstart))
         self.record_array(ss_data, data, gamma, 'idn_integ', new_swp_vars)
         return ss_data
