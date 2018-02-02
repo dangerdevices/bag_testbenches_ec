@@ -334,12 +334,8 @@ class MOSNoiseTB(TestbenchManager):
             tb.set_sweep_parameter('vgs', values=vgs_vals)
             tb.set_parameter('vb_dc', abs(vgs_start))
 
-    def get_integrated_noise(self, data, ss_data):
+    def get_integrated_noise(self, data, ss_data, temp, fstart, fstop, scale=1.0):
         fg = self.specs['fg']
-        temp = self.specs['noise_temp_kelvin']
-        fstart = self.specs['noise_integ_fstart']
-        fstop = self.specs['noise_integ_fstop']
-        scale = self.specs.get('noise_integ_scale', 1.0)
 
         axis_names = ['corner', 'vbs', 'vds', 'vgs', 'freq']
 
@@ -458,8 +454,13 @@ class MOSCharSS(MeasurementManager):
             done = True
             next_state = ''
 
+            temp = self.specs['noise_temp_kelvin']
+            fstart = self.specs['noise_integ_fstart']
+            fstop = self.specs['noise_integ_fstop']
+            scale = self.specs.get('noise_integ_scale', 1.0)
+
             ss_params = load_sim_file(ss_fname)
-            ss_params = tb_manager.get_integrated_noise(data, ss_params)
+            ss_params = tb_manager.get_integrated_noise(data, ss_params, temp, fstart, fstop, scale=scale)
             save_sim_results(ss_params, ss_fname)
 
             output = dict(ss_file=ss_fname)
