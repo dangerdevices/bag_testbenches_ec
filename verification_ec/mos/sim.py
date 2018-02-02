@@ -374,7 +374,7 @@ class MOSNoiseTB(TestbenchManager):
             integ_noise_list.append(noise_fun.integrate(fstart_log, fstop_log, axis=-1, logx=True, logy=True, raw=True))
 
         gamma = np.array(integ_noise_list) / (4.0 * 1.38e-23 * temp * ss_data['gm'] * (fstop - fstart))
-        self.record_array(ss_data, data, gamma, 'idn_integ', new_swp_vars)
+        self.record_array(ss_data, data, gamma, 'gamma', new_swp_vars)
         return ss_data
 
 
