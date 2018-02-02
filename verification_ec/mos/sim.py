@@ -348,8 +348,7 @@ class MOSNoiseTB(TestbenchManager):
             data['corner'] = np.array([self.env_list[0]])
         corner_list = data['corner']
         log_freq = np.log(data['freq'])
-        cur_points = [np.arange(len(corner_list))]
-        cur_points.extend((data[name] for name in ss_swp_names))
+        cur_points = [data[name] for name in ss_swp_names]
         cur_points[-1] = log_freq
 
         # rearrange array axis
@@ -367,7 +366,7 @@ class MOSNoiseTB(TestbenchManager):
 
         # rearrange array axis
         idn = np.log(scale / fg * (idn ** 2))
-        delta_list = [1e-6] * (len(ss_swp_names) + 1)
+        delta_list = [1e-6] * len(ss_swp_names)
         delta_list[-1] = 1e-3
         integ_noise_list = []
         for idx in range(len(corner_list)):
