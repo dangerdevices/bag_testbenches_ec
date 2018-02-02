@@ -11,8 +11,9 @@ import numpy as np
 import scipy.interpolate as interp
 import scipy.optimize as sciopt
 
-from bag.io.sim_data import save_sim_results
+from bag.io.sim_data import save_sim_results, load_sim_file
 from bag.simulation.core import MeasurementManager, TestbenchManager
+from bag.math.interpolate import LinearInterpolator
 
 if TYPE_CHECKING:
     from bag.core import Testbench
@@ -333,6 +334,52 @@ class MOSNoiseTB(TestbenchManager):
             tb.set_sweep_parameter('vgs', values=vgs_vals)
             tb.set_parameter('vb_dc', abs(vgs_start))
 
+    def get_integrated_noise(self, data, ss_data):
+        fg = self.specs['fg']
+        temp = self.specs['noise_temp_kelvin']
+        fstart = self.specs['noise_integ_fstart']
+        fstop = self.specs['noise_integ_fstop']
+        scale = self.specs.get('noise_integ_scale', 1.0)
+
+        axis_names = ['corner', 'vbs', 'vds', 'vgs', 'freq']
+
+        idn = data['idn']
+
+        ss_swp_names = [name for name in axis_names[1:] if name in data]
+        swp_corner = ('corner' in data)
+        if not swp_corner:
+            data = data.copy()
+            data['corner'] = np.array([self.env_list[0]])
+        corner_list = data['corner']
+        log_freq = np.log(data['freq'])
+        cur_points = [np.arange(len(corner_list))]
+        cur_points.extend((data[name] for name in ss_swp_names))
+        cur_points[-1] = log_freq
+        delta_list = [1e-6] * len(ss_swp_names)
+        delta_list[-1] = 1e-3
+
+        # rearrange array axis
+        swp_vars = data['sweep_params']['idn']
+        order = [swp_vars.index(name) for name in axis_names if name in swp_vars]
+        idn = np.transpose(idn, axes=order)
+        if not swp_corner:
+            # add dimension that corresponds to corner
+            idn = idn[np.newaxis, ...]
+
+        # construct new SS parameter result dictionary
+        fstart_log = np.log(fstart)
+        fstop_log = np.log(fstop)
+
+        # rearrange array axis
+        idn = np.log(scale / fg * (idn ** 2))
+        noise_fun = LinearInterpolator(cur_points, idn, delta_list, extrapolate=True)
+        integ_noise = noise_fun.integrate(fstart_log, fstop_log, axis=-1, logx=True, logy=True, raw=True)
+
+        new_swp_vars = ['corner', ] + ss_swp_names[:-1]
+        gamma = integ_noise / (4.0 * 1.38e-23 * temp * ss_data['gm'] * (fstop - fstart))
+        self.record_array(ss_data, data, gamma, 'idn_integ', new_swp_vars)
+        return ss_data
+
 
 class MOSCharSS(MeasurementManager):
     """This class measures small signal parameters of a transistor using Y parameter fitting.
@@ -388,6 +435,7 @@ class MOSCharSS(MeasurementManager):
     def process_output(self, state, data, tb_manager):
         # type: (str, Dict[str, Any], Union[MOSIdTB, MOSSPTB, MOSNoiseTB]) -> Tuple[bool, str, Dict[str, Any]]
 
+        ss_fname = os.path.join(self.data_dir, 'ss_params.hdf5')
         if state == 'ibias':
             done = False
             next_state = 'sp'
@@ -404,13 +452,17 @@ class MOSCharSS(MeasurementManager):
 
             ss_params = tb_manager.get_ss_params(data)
             # save SS parameters
-            file_name = os.path.join(self.data_dir, 'ss_params.hdf5')
-            save_sim_results(ss_params, file_name)
-            output = dict(ss_file=file_name)
+            save_sim_results(ss_params, ss_fname)
+            output = dict(ss_file=ss_fname)
         elif state == 'noise':
             done = True
             next_state = ''
-            output = dict(noise_file='')
+
+            ss_params = load_sim_file(ss_fname)
+            ss_params = tb_manager.get_integrated_noise(data, ss_params)
+            save_sim_results(ss_params, ss_fname)
+
+            output = dict(ss_file=ss_fname)
         else:
             raise ValueError('Unknown state: %s' % state)
 

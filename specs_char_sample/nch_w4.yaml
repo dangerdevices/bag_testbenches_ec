@@ -62,6 +62,10 @@ measurements:
     out_fname: 'mos_ss.yaml'
     is_nmos: True
     fg: 20
+    noise_temp_kelvin: 300
+    noise_integ_fstart: 10.0e+6
+    noise_integ_fstop: 1.0e+9
+    noise_integ_scale: 1.0
     testbenches:
       ibias:
         tb_package: 'verification_ec.mos.sim'
@@ -89,3 +93,18 @@ measurements:
         vbs: [0.0, 0.15, 0.3, 0.45]
         sp_freq: 1.0e+6
         cfit_method: 'average'
+      noise:
+        tb_package: 'verification_ec.mos.sim'
+        tb_class: 'MOSNoiseTB'
+        tb_lib: 'bag_testbenches_ec'
+        tb_cell: 'mos_tb_noise'
+        sch_params: {}
+        wrapper_type: ''
+        vgs_num: 30
+        vds_num: 20
+        vds_min: 5.0e-3
+        vds_max: 1.0
+        vbs: [0.0, 0.15, 0.3, 0.45]
+        freq_start: 1.0e+6
+        freq_stop: 100.0e+9
+        num_per_dec: 20
