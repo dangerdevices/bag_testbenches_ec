@@ -2,7 +2,31 @@ lib_name: bag_testbenches_ec
 cell_name: mos_tb_noise
 pins: [  ]
 instances:
-  V2:
+  IBIAS:
+    lib_name: analogLib
+    cell_name: idc
+    instpins:
+      PLUS:
+        direction: inputOutput
+        net_name: "ibias"
+        num_bits: 1
+      MINUS:
+        direction: inputOutput
+        net_name: "vs"
+        num_bits: 1
+  VBIAS:
+    lib_name: analogLib
+    cell_name: vdc
+    instpins:
+      PLUS:
+        direction: inputOutput
+        net_name: "ibias"
+        num_bits: 1
+      MINUS:
+        direction: inputOutput
+        net_name: "vs"
+        num_bits: 1
+  VB:
     lib_name: analogLib
     cell_name: vdc
     instpins:
@@ -50,7 +74,7 @@ instances:
         direction: inputOutput
         net_name: "vs"
         num_bits: 1
-  I2:
+  I3:
     lib_name: analogLib
     cell_name: gnd
     instpins:
