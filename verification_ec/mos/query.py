@@ -38,6 +38,10 @@ class MOSDBDiscrete(object):
         transistor characterization measurement type.
     vgs_res : float
         vgs resolution used when computing vgs from vstar.
+    is_schematic : bool
+        True if this is working with schematic simulation data.
+    width_var : str
+        the width variable name.
     """
 
     def __init__(self,
@@ -46,6 +50,8 @@ class MOSDBDiscrete(object):
                  bag_config_path=None,  # type: Optional[str]
                  meas_type='mos_ss',  # type: str
                  vgs_res=5e-3,  # type: float
+                 is_schematic=False,
+                 width_var='w',
                  ):
         # type: (...) -> None
         # error checking
@@ -61,9 +67,10 @@ class MOSDBDiscrete(object):
         self._width_list = []
         self._vgs_res = vgs_res
 
+        param_name = 'schematic_params' if is_schematic else 'layout_params'
         for spec in spec_list:
             dsn_manager = DesignManager(None, spec)
-            cur_width = dsn_manager.specs['layout_params']['w']
+            cur_width = dsn_manager.specs[param_name][width_var]
             cur_width = int(round(cur_width / self._width_res))
             self._width_list.append(cur_width)
 
