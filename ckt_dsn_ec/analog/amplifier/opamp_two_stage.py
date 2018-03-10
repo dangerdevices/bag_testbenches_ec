@@ -4,6 +4,7 @@
 
 from typing import List, Optional, Dict, Any, Tuple, Sequence
 
+import os
 from copy import deepcopy
 
 import numpy as np
@@ -15,6 +16,8 @@ from bag.math import gcd
 from bag.data.core import Waveform
 from bag.data.lti import LTICircuit, get_stability_margins, get_w_crossings, get_w_3db
 from bag.util.search import FloatBinaryIterator, BinaryIterator, minimize_cost_golden
+from bag.simulation.core import MeasurementManager
+from bag.io.sim_data import save_sim_results
 
 from verification_ec.mos.query import MOSDBDiscrete
 
@@ -628,18 +631,37 @@ class OpAmpTwoStage(object):
 
         return cir
 
+# TODO: finish converting this class.
+class OpAmpTwoStageChar(MeasurementManager):
+    def __init__(self,
+                 data_dir,  # type: str
+                 meas_name,  # type: str
+                 impl_lib,  # type: str
+                 specs,  # type: Dict[str, Any]
+                 wrapper_lookup,  # type: Dict[str, str]
+                 sim_view_list,  # type: Sequence[Tuple[str, str]]
+                 env_list,  # type: Sequence[str]
+                 ):
+        MeasurementManager.__init__(self, data_dir, meas_name, impl_lib, specs, wrapper_lookup,
+                                    sim_view_list, env_list)
 
-class OpAmpTwoStageChar(SimulationManager):
-    def __init__(self, prj, spec_file):
-        # type: (Optional[BagProject], str) -> None
-        super(OpAmpTwoStageChar, self).__init__(prj, spec_file)
-        combo_list = list(self.get_combinations_iter())
+    def get_initial_state(self):
+        # type: () -> str
+        """Returns the initial FSM state."""
+        return 'ac'
 
-        if len(combo_list) != 1:
-            raise ValueError(
-                'This characterization class does not support sweeping design parameters.')
+    def process_output(self, state, data, tb_manager):
+        # type: (str, Dict[str, Any], ACTB) -> Tuple[bool, str, Dict[str, Any]]
 
-        self._val_list = combo_list[0]
+        done = True
+        next_state = ''
+
+        gain_w3db_results = tb_manager.get_gain_and_w3db(data, tb_manager.get_outputs())
+        file_name = os.path.join(self.data_dir, 'gain_w3db.hdf5')
+        save_sim_results(gain_w3db_results, file_name)
+        output = dict(gain_w3db_file=file_name)
+
+        return done, next_state, output
 
     def configure_tb(self, tb_type, tb, val_list):
         # type: (str, Testbench, Tuple[Any, ...]) -> None
