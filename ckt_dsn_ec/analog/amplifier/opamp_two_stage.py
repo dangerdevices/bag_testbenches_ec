@@ -15,9 +15,8 @@ from bag.math import gcd
 from bag.data.core import Waveform
 from bag.data.lti import LTICircuit, get_stability_margins, get_w_crossings, get_w_3db
 from bag.util.search import FloatBinaryIterator, BinaryIterator, minimize_cost_golden
-from bag.simulation.core import SimulationManager
 
-from ckt_dsn_ec.mos.core import MOSDBDiscrete
+from verification_ec.mos.query import MOSDBDiscrete
 
 from .components import LoadDiodePFB, InputGm
 
@@ -61,15 +60,17 @@ class TailStage1(object):
                 vg_max = vgs_max + vb
 
                 # find vgs for each corner
-                vgs_list, gds1_list, gds2_list = self._solve_vgs(itarg_list, vout_amp_list, vd_list, ib, gds, seg,
-                                                                 vb, vg_min, vg_max)
+                vgs_list, gds1_list, gds2_list = self._solve_vgs(itarg_list, vout_amp_list, vd_list,
+                                                                 ib, gds, seg, vb, vg_min, vg_max)
                 if vgs_list is not None:
                     cur_score = max(gds2_list)
                     if self._best_op is None or cur_score < best_score:
                         best_score = cur_score
-                        self._best_op = (w, intent, seg, stack, vb, vgs_list, vout_amp_list, gds1_list, gds2_list)
+                        self._best_op = (w, intent, seg, stack, vb, vgs_list, vout_amp_list,
+                                         gds1_list, gds2_list)
 
-    def _solve_vgs(self, itarg_list, vout_list, vd_list, ib_list, gds_list, seg, vb, vg_min, vg_max):
+    def _solve_vgs(self, itarg_list, vout_list, vd_list, ib_list, gds_list, seg, vb, vg_min,
+                   vg_max):
         vgs_list, gds1_list, gds2_list = [], [], []
         for itarg, vout, vd, ibf, gdsf in zip(itarg_list, vout_list, vd_list, ib_list, gds_list):
 
@@ -213,15 +214,17 @@ class OpAmpTwoStage(object):
                     i1_size_cur_opt = i1_size_iter.get_next()
                     print('testing i1_size = %d' % i1_size_cur_opt)
                     try:
-                        self._design_with_itarg(i1_size_cur_opt, i1_unit, vg_list, vout_list, cpar1, cload,
-                                                f_unit, phase_margin, res_var, l, vstar_gm_min,
-                                                ft_load_scale, vds_tail_min, seg_gm_min,
-                                                vdd, pmos_input, max_ref_ratio, load_stack_list)
+                        self._design_with_itarg(i1_size_cur_opt, i1_unit, vg_list, vout_list, cpar1,
+                                                cload, f_unit, phase_margin, res_var, l,
+                                                vstar_gm_min, ft_load_scale, vds_tail_min,
+                                                seg_gm_min, vdd, pmos_input, max_ref_ratio,
+                                                load_stack_list)
 
                         if self._amp_info['scale2'] <= opt_info['scale2']:
                             opt_info = self._amp_info
                             i1_size_opt = i1_size_cur_opt
-                            print('update: i1_size = %d, scale2 = %.4g' % (i1_size_opt, opt_info['scale2']))
+                            print('update: i1_size = %d, '
+                                  'scale2 = %.4g' % (i1_size_opt, opt_info['scale2']))
                             i1_size_iter.down()
                         else:
                             i1_size_iter.up()
@@ -292,8 +295,8 @@ class OpAmpTwoStage(object):
 
         # design input gm
         print('designing input gm')
-        gm.design(itarg_list, vg_list, vmid_list, gds_load_list, vb_gm, vstar_gm_min, vds_tail_min, l,
-                  seg_min=seg_gm_min, stack_list=[stack_ngm])
+        gm.design(itarg_list, vg_list, vmid_list, gds_load_list, vb_gm, vstar_gm_min, vds_tail_min,
+                  l, seg_min=seg_gm_min, stack_list=[stack_ngm])
         gm_info = gm.get_dsn_info()
         gm1_list = gm_info['gm']
         gds_in_list = gm_info['gds']
@@ -312,7 +315,8 @@ class OpAmpTwoStage(object):
 
         # design stage 2 gm
         w_dict = {'load': load_info['w'], 'in': gm_info['w'], 'tail': tail1_info['w']}
-        th_dict = {'load': load_info['intent'], 'in': gm_info['intent'], 'tail': tail1_info['intent']}
+        th_dict = {'load': load_info['intent'], 'in': gm_info['intent'],
+                   'tail': tail1_info['intent']}
         stack_dict = {'tail': stack_gm, 'in': stack_gm, 'diode': stack_diode, 'ngm': stack_ngm}
         seg_dict = {'tail1': seg_gm,
                     'in': seg_gm,
@@ -321,9 +325,10 @@ class OpAmpTwoStage(object):
                     }
 
         print('designing stage 2')
-        stage2_results = self._design_stage2(gm_db, load_db, vtail_list, vg_list, vmid_list, vout_list, vbias_list,
-                                             vb_gm, vb_load, cload, cpar1, w_dict, th_dict, stack_dict, seg_dict,
-                                             gm2_list, res_var, phase_margin, f_unit, max_ref_ratio)
+        stage2_results = self._design_stage2(gm_db, load_db, vtail_list, vg_list, vmid_list,
+                                             vout_list, vbias_list, vb_gm, vb_load, cload, cpar1,
+                                             w_dict, th_dict, stack_dict, seg_dict, gm2_list,
+                                             res_var, phase_margin, f_unit, max_ref_ratio)
 
         scale2 = seg_dict['diode2'] / seg_dict['diode1']
         scaler = seg_dict['ref'] / seg_dict['tail1']
@@ -411,8 +416,8 @@ class OpAmpTwoStage(object):
         return top_specs
 
     def _design_stage2(self, gm_db, load_db, vtail_list, vg_list, vmid_list, vout_list, vbias_list,
-                       vb_gm, vb_load, cload, cpar1, w_dict, th_dict, stack_dict, seg_dict, gm2_list,
-                       res_var, phase_margin, f_unit, max_ref_ratio):
+                       vb_gm, vb_load, cload, cpar1, w_dict, th_dict, stack_dict, seg_dict,
+                       gm2_list, res_var, phase_margin, f_unit, max_ref_ratio):
 
         seg_tail1 = seg_dict['tail1']
         seg_diode1 = seg_dict['diode1']
@@ -435,9 +440,9 @@ class OpAmpTwoStage(object):
             cur_scale2 = cur_size / seg_gcd
 
             cur_gm2_list = [gm2 * cur_scale2 for gm2 in gm2_list]
-            ac_results = self._find_rz_cf(gm_db, load_db, vtail_list, vg_list, vmid_list, vout_list, vbias_list,
-                                          vb_gm, vb_load, cload, cpar1, w_dict, th_dict, stack_dict, seg_dict,
-                                          cur_gm2_list, res_var, phase_margin)
+            ac_results = self._find_rz_cf(gm_db, load_db, vtail_list, vg_list, vmid_list, vout_list,
+                                          vbias_list, vb_gm, vb_load, cload, cpar1, w_dict, th_dict,
+                                          stack_dict, seg_dict, cur_gm2_list, res_var, phase_margin)
 
             return ac_results
 
@@ -498,11 +503,13 @@ class OpAmpTwoStage(object):
 
     def _find_rz_cf(self, gm_db, load_db, vtail_list, vg_list, vmid_list, vout_list, vbias_list,
                     vb_gm, vb_load, cload, cpar1, w_dict, th_dict, stack_dict, seg_dict,
-                    gm2_list, res_var, phase_margin, cap_tol=1e-15, cap_step=10e-15, cap_min=1e-15, cap_max=1e-9):
+                    gm2_list, res_var, phase_margin, cap_tol=1e-15, cap_step=10e-15, cap_min=1e-15,
+                    cap_max=1e-9):
         """Find minimum miller cap that stabilizes the system.
 
-        NOTE: This function assume phase of system for any miller cap value will not loop around 360,
-        otherwise it may get the phase margin wrong.  This assumption should be valid for this op amp.
+        NOTE: This function assume phase of system for any miller cap value will not loop
+        around 360, otherwise it may get the phase margin wrong.  This assumption should be valid
+        for this op amp.
         """
         gz_worst = float(min(gm2_list))
         gz_nom = gz_worst * (1 - res_var)
@@ -510,8 +517,9 @@ class OpAmpTwoStage(object):
         cf_min = cap_min
         for env_idx, (vtail, vg, vmid, vout, vbias) in \
                 enumerate(zip(vtail_list, vg_list, vmid_list, vout_list, vbias_list)):
-            cir = self._make_circuit(env_idx, gm_db, load_db, vtail, vg, vmid, vout, vbias, vb_gm, vb_load,
-                                     cload, cpar1, w_dict, th_dict, stack_dict, seg_dict, gz_worst)
+            cir = self._make_circuit(env_idx, gm_db, load_db, vtail, vg, vmid, vout, vbias, vb_gm,
+                                     vb_load, cload, cpar1, w_dict, th_dict, stack_dict, seg_dict,
+                                     gz_worst)
 
             bin_iter = FloatBinaryIterator(cf_min, None, cap_tol, search_step=cap_step)
             while bin_iter.has_next():
@@ -531,15 +539,17 @@ class OpAmpTwoStage(object):
                 cir.add_cap(-cur_cf, 'outp', 'xp')
                 cir.add_cap(-cur_cf, 'outn', 'xn')
 
-            # bin_iter is guaranteed to save at least one value, so don't need to worry about cf_min being None
+            # bin_iter is guaranteed to save at least one value, so don't need to worry about
+            # cf_min being None
             cf_min = bin_iter.get_last_save()
 
         # find gain, unity gain bandwidth, and phase margin across corners
         gain_list, f3db_list, funity_list, pm_list = [], [], [], []
         for env_idx, (vtail, vg, vmid, vout, vbias) in \
                 enumerate(zip(vtail_list, vg_list, vmid_list, vout_list, vbias_list)):
-            cir = self._make_circuit(env_idx, gm_db, load_db, vtail, vg, vmid, vout, vbias, vb_gm, vb_load,
-                                     cload, cpar1, w_dict, th_dict, stack_dict, seg_dict, gz_nom)
+            cir = self._make_circuit(env_idx, gm_db, load_db, vtail, vg, vmid, vout, vbias, vb_gm,
+                                     vb_load, cload, cpar1, w_dict, th_dict, stack_dict, seg_dict,
+                                     gz_nom)
             cir.add_cap(cf_min, 'outp', 'xp')
             cir.add_cap(cf_min, 'outn', 'xn')
             num, den = cir.get_num_den('in', 'out')
@@ -553,8 +563,9 @@ class OpAmpTwoStage(object):
         return funity_list, 1 / gz_nom, cf_min, gain_list, f3db_list, pm_list
 
     @classmethod
-    def _make_circuit(cls, env_idx, gm_db, load_db, vtail, vg, vmid, vout, vbias, vb_gm, vb_load, cload, cpar1,
-                      w_dict, th_dict, stack_dict, seg_dict, gz, neg_cap=False, no_fb=False):
+    def _make_circuit(cls, env_idx, gm_db, load_db, vtail, vg, vmid, vout, vbias, vb_gm, vb_load,
+                      cload, cpar1, w_dict, th_dict, stack_dict, seg_dict, gz, neg_cap=False,
+                      no_fb=False):
 
         cur_env = gm_db.env_list[env_idx]
         gm_db.set_dsn_params(w=w_dict['tail'], intent=th_dict['tail'], stack=stack_dict['tail'])
@@ -571,21 +582,34 @@ class OpAmpTwoStage(object):
 
         cir = LTICircuit()
         # stage 1
-        cir.add_transistor(tail1_params, 'tail', 'gnd', 'gnd', 'gnd', fg=seg_dict['tail1'], neg_cap=neg_cap)
-        cir.add_transistor(gm1_params, 'midp', 'inn', 'tail', 'gnd', fg=seg_dict['in'], neg_cap=neg_cap)
-        cir.add_transistor(gm1_params, 'midn', 'inp', 'tail', 'gnd', fg=seg_dict['in'], neg_cap=neg_cap)
-        cir.add_transistor(diode1_params, 'midp', 'midp', 'gnd', 'gnd', fg=seg_dict['diode1'], neg_cap=neg_cap)
-        cir.add_transistor(diode1_params, 'midn', 'midn', 'gnd', 'gnd', fg=seg_dict['diode1'], neg_cap=neg_cap)
-        cir.add_transistor(ngm1_params, 'midn', 'midp', 'gnd', 'gnd', fg=seg_dict['ngm1'], neg_cap=neg_cap)
-        cir.add_transistor(ngm1_params, 'midp', 'midn', 'gnd', 'gnd', fg=seg_dict['ngm1'], neg_cap=neg_cap)
+        cir.add_transistor(tail1_params, 'tail', 'gnd', 'gnd', 'gnd', fg=seg_dict['tail1'],
+                           neg_cap=neg_cap)
+        cir.add_transistor(gm1_params, 'midp', 'inn', 'tail', 'gnd', fg=seg_dict['in'],
+                           neg_cap=neg_cap)
+        cir.add_transistor(gm1_params, 'midn', 'inp', 'tail', 'gnd', fg=seg_dict['in'],
+                           neg_cap=neg_cap)
+        cir.add_transistor(diode1_params, 'midp', 'midp', 'gnd', 'gnd', fg=seg_dict['diode1'],
+                           neg_cap=neg_cap)
+        cir.add_transistor(diode1_params, 'midn', 'midn', 'gnd', 'gnd', fg=seg_dict['diode1'],
+                           neg_cap=neg_cap)
+        cir.add_transistor(ngm1_params, 'midn', 'midp', 'gnd', 'gnd', fg=seg_dict['ngm1'],
+                           neg_cap=neg_cap)
+        cir.add_transistor(ngm1_params, 'midp', 'midn', 'gnd', 'gnd', fg=seg_dict['ngm1'],
+                           neg_cap=neg_cap)
 
         # stage 2
-        cir.add_transistor(tail2_params, 'outp', 'gnd', 'gnd', 'gnd', fg=seg_dict['tail2'], neg_cap=neg_cap)
-        cir.add_transistor(tail2_params, 'outn', 'gnd', 'gnd', 'gnd', fg=seg_dict['tail2'], neg_cap=neg_cap)
-        cir.add_transistor(diode2_params, 'outp', 'midn', 'gnd', 'gnd', fg=seg_dict['diode2'], neg_cap=neg_cap)
-        cir.add_transistor(diode2_params, 'outn', 'midp', 'gnd', 'gnd', fg=seg_dict['diode2'], neg_cap=neg_cap)
-        cir.add_transistor(ngm2_params, 'outp', 'midn', 'gnd', 'gnd', fg=seg_dict['ngm2'], neg_cap=neg_cap)
-        cir.add_transistor(ngm2_params, 'outn', 'midp', 'gnd', 'gnd', fg=seg_dict['ngm2'], neg_cap=neg_cap)
+        cir.add_transistor(tail2_params, 'outp', 'gnd', 'gnd', 'gnd', fg=seg_dict['tail2'],
+                           neg_cap=neg_cap)
+        cir.add_transistor(tail2_params, 'outn', 'gnd', 'gnd', 'gnd', fg=seg_dict['tail2'],
+                           neg_cap=neg_cap)
+        cir.add_transistor(diode2_params, 'outp', 'midn', 'gnd', 'gnd', fg=seg_dict['diode2'],
+                           neg_cap=neg_cap)
+        cir.add_transistor(diode2_params, 'outn', 'midp', 'gnd', 'gnd', fg=seg_dict['diode2'],
+                           neg_cap=neg_cap)
+        cir.add_transistor(ngm2_params, 'outp', 'midn', 'gnd', 'gnd', fg=seg_dict['ngm2'],
+                           neg_cap=neg_cap)
+        cir.add_transistor(ngm2_params, 'outn', 'midp', 'gnd', 'gnd', fg=seg_dict['ngm2'],
+                           neg_cap=neg_cap)
 
         # parasitic cap
         cir.add_cap(cpar1, 'midp', 'gnd')
@@ -612,7 +636,8 @@ class OpAmpTwoStageChar(SimulationManager):
         combo_list = list(self.get_combinations_iter())
 
         if len(combo_list) != 1:
-            raise ValueError('This characterization class does not support sweeping design parameters.')
+            raise ValueError(
+                'This characterization class does not support sweeping design parameters.')
 
         self._val_list = combo_list[0]
 
@@ -826,4 +851,4 @@ class OpAmpTwoStageChar(SimulationManager):
         phase0 = phase_wv(xvec[0])
         phase = phase_wv(lf_unity)
 
-        return 10.0**lf_unity, 180 - (phase0 - phase)
+        return 10.0 ** lf_unity, 180 - (phase0 - phase)
