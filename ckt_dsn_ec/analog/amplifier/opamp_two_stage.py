@@ -2,18 +2,15 @@
 
 """This module contains design algorithm for a traditional two stage operational amplifier."""
 
-from typing import List, Optional, Dict, Any, Tuple, Sequence
+from typing import TYPE_CHECKING, List, Optional, Dict, Any, Tuple, Sequence
 
 import os
 from copy import deepcopy
 
 import numpy as np
 import scipy.optimize as sciopt
-import scipy.interpolate as interp
 
-from bag.core import BagProject, Testbench
 from bag.math import gcd
-from bag.data.core import Waveform
 from bag.data.lti import LTICircuit, get_stability_margins, get_w_crossings, get_w_3db
 from bag.util.search import FloatBinaryIterator, BinaryIterator, minimize_cost_golden
 from bag.simulation.core import MeasurementManager
@@ -22,6 +19,9 @@ from bag.io.sim_data import save_sim_results
 from verification_ec.mos.query import MOSDBDiscrete
 
 from .components import LoadDiodePFB, InputGm
+
+if TYPE_CHECKING:
+    from verification_ec.ac.core import ACTB
 
 
 class TailStage1(object):
@@ -631,7 +631,7 @@ class OpAmpTwoStage(object):
 
         return cir
 
-# TODO: finish converting this class.
+
 class OpAmpTwoStageChar(MeasurementManager):
     def __init__(self,
                  data_dir,  # type: str
@@ -648,200 +648,74 @@ class OpAmpTwoStageChar(MeasurementManager):
     def get_initial_state(self):
         # type: () -> str
         """Returns the initial FSM state."""
-        return 'ac'
+        return 'ac0'
+
+    def get_testbench_info(self, state, prev_output):
+        rfb0 = self.specs['rfb']
+        cfb0 = self.specs['cfb']
+        res_var = self.specs['res_var']
+        cmin_scale = self.specs['cmin_scale']
+        cmax_scale = self.specs['cmax_scale']
+        num_pts = self.specs['num_pts']
+
+        tmp = super(OpAmpTwoStageChar, self).get_testbench_info('ac', prev_output)
+        tb_name, tb_type, tb_specs, tb_params = tmp
+
+        if state == 'ac0':
+            cfb_list = np.linspace(cfb0 * cmin_scale, cfb0 * cmax_scale, num_pts).tolist()
+
+            tb_specs['sim_vars']['rfb'] = rfb0 * (1 - res_var)
+            tb_specs['sim_vars']['cfb'] = cfb_list
+        else:
+            cfb = self.get_state_output('ac0')['cfb']
+            tb_specs['sim_vars']['rfb'] = rfb0
+            tb_specs['sim_vars']['cfb'] = cfb
+
+        return tb_name, tb_type, tb_specs, tb_params
 
     def process_output(self, state, data, tb_manager):
         # type: (str, Dict[str, Any], ACTB) -> Tuple[bool, str, Dict[str, Any]]
+        phase_margin = self.specs['phase_margin']
+        output_list = ['vout']
+        results = tb_manager.get_ugb_and_pm(data, output_list)
 
-        done = True
-        next_state = ''
+        if state == 'ac0':
+            done = False
+            next_state = 'ac1'
+            cfb = self._find_min_cfb(phase_margin, results)
+            output = dict(cfb=cfb)
+        else:
+            done = True
+            next_state = ''
 
-        gain_w3db_results = tb_manager.get_gain_and_w3db(data, tb_manager.get_outputs())
-        file_name = os.path.join(self.data_dir, 'gain_w3db.hdf5')
-        save_sim_results(gain_w3db_results, file_name)
-        output = dict(gain_w3db_file=file_name)
+            cfb = self.get_state_output('ac0')['cfb']
+            tb_manager.get_gain_and_w3db(data, output_list, output_dict=results)
+            file_name = os.path.join(self.data_dir, 'ac_output.hdf5')
+            save_sim_results(results, file_name)
+            output = dict(cfb=cfb, output_file=file_name)
 
         return done, next_state, output
 
-    def configure_tb(self, tb_type, tb, val_list):
-        # type: (str, Testbench, Tuple[Any, ...]) -> None
-        tb_specs = self.specs[tb_type]
-        sim_envs = self.specs['sim_envs']
-        view_name = self.specs['view_name']
-        impl_lib = self.specs['impl_lib']
-        dsn_name_base = self.specs['dsn_name_base']
-        tb_params_real = self.specs['feedback_params'].copy()
+    @classmethod
+    def _find_min_cfb(cls, phase_margin, results):
+        axis_names = ['corner', 'cfb']
 
-        tb_params = tb_specs['tb_params']
-        dsn_name = self.get_instance_name(dsn_name_base, val_list)
-
-        tb.set_simulation_environments(sim_envs)
-        tb.set_simulation_view(impl_lib, dsn_name, view_name)
-
-        tb_params_real.update(tb_params)
-        for key, val in tb_params_real.items():
-            if isinstance(val, list):
-                tb.set_sweep_parameter(key, values=val)
-            else:
-                tb.set_parameter(key, val)
-
-    def find_cfb(self, min_scale=1.0, max_scale=2.0, num_pts=11, gen_dsn=True):
-        tb_type = 'tb_ac'
-        feedback_params = self.specs['feedback_params']
-        tb_ac_specs = self.specs[tb_type]
-        dsn_specs = self.specs['dsn_specs']
-
-        res_var = dsn_specs['res_var']
-        phase_margin = dsn_specs['phase_margin']
-
-        rfb0 = feedback_params['rfb']
-        cfb0 = feedback_params['cfb']
-        # noinspection PyUnresolvedReferences
-        cfb_list = np.linspace(cfb0 * min_scale, cfb0 * max_scale, num_pts).tolist()
-        tb_ac_specs['tb_params']['cfb'] = cfb_list
-        tb_ac_specs['tb_params']['rfb'] = rfb0 * (1 - res_var)
-
-        if gen_dsn:
-            self.create_designs()
-            self.run_simulations(tb_type)
-        else:
-            self.run_simulations(tb_type)
-
-        # determine Cfb that stabilizes amplifier
-        cfb = self.find_min_cfb(phase_margin)
-
-        # get actual performace
-        tb_ac_specs['tb_params']['cfb'] = cfb
-        tb_ac_specs['tb_params']['rfb'] = rfb0
-
-        self.run_simulations(tb_type)
-        corner_list, f_unity_list, pm_list = self.process_ac_data()
-
-        return cfb, corner_list, f_unity_list, pm_list
-
-    def process_dc_data(self, plot=False):
-        tb_type = 'tb_dc'
-        axis_names = ['corner', 'voutref']
-
-        results = self.get_sim_results(tb_type, self._val_list)
-        corner_list = results['corner']
-        corner_sort_arg = np.argsort(corner_list)  # type: Sequence[int]
-        corner_list = corner_list[corner_sort_arg].tolist()
-
-        sweep_vars = results['sweep_params']['vout']
-        order = [sweep_vars.index(name) for name in axis_names]
-        vout_data = np.transpose(results['vout'], axes=order)
-        vin_data = np.transpose(results['vin'], axes=order)
-
-        gain_list, vout_vec_list, gain_vec_list, vin_vec_list = [], [], [], []
-        for corner_idx in corner_sort_arg:
-            vout_vec = vout_data[corner_idx, :]
-            vin_vec = vin_data[corner_idx, :]
-            cur_vin, vin_arg = np.unique(vin_vec, return_index=True)
-            cur_vout = vout_vec[vin_arg]
-
-            vout_fun = interp.InterpolatedUnivariateSpline(cur_vin, cur_vout)
-            vout_diff_fun = vout_fun.derivative(1)
-            gain_list.append(vout_diff_fun([0]))
-            vin_vec_list.append(cur_vin)
-            vout_vec_list.append(cur_vout)
-            gain_vec_list.append(vout_diff_fun(cur_vin))
-
-        gain_str = ', '.join(('%.4g' % gain for gain in gain_list))
-        print('gain=[%s]' % gain_str)
-
-        if plot:
-            import matplotlib.pyplot as plt
-            plt.ticklabel_format(style='sci', axis='both', scilimits=(-1, 2))
-            f, (ax1, ax2) = plt.subplots(2, sharex='all')
-            ax1.set_title('Vout v.s. Vin')
-            ax1.set_ylabel('Vout (V)')
-            ax2.set_title('Gain v.s. Vin')
-            ax2.set_xlabel('Vin (V)')
-            for corner, vout_vec, gain_vec, vin_vec in \
-                    zip(corner_list, vout_vec_list, gain_vec_list, vin_vec_list):
-                ax1.plot(vin_vec, vout_vec, label=corner)
-                ax2.plot(vin_vec, gain_vec, label=corner)
-
-            ax1.legend()
-            ax2.legend()
-
-        return corner_list, gain_list
-
-    def process_ac_data(self, plot=False):
-        tb_type = 'tb_ac'
-        axis_names = ['corner', 'freq']
-
-        results = self.get_sim_results(tb_type, self._val_list)
-        corner_list = results['corner']
-        corner_sort_arg = np.argsort(corner_list)  # type: Sequence[int]
-        corner_list = corner_list[corner_sort_arg].tolist()
-
-        # rearrange array axis
-        sweep_vars = results['sweep_params']['vout_ac']
-        order = [sweep_vars.index(name) for name in axis_names]
-        vout_data = np.transpose(results['vout_ac'], axes=order)
-
-        # determine minimum cfb
-        freq_vec = results['freq']
-        f_unity_list, pm_list, vout_vec_list = [], [], []
-        for corner_idx in corner_sort_arg:
-            vout_vec = vout_data[corner_idx, :]
-            f_unity, pm = self._get_ac_info(freq_vec, vout_vec)
-            vout_vec_list.append(vout_vec)
-            f_unity_list.append(f_unity)
-            pm_list.append(pm)
-
-        f_unity_str = ', '.join(('%.4g' % f_unity for f_unity in f_unity_list))
-        pm_str = ', '.join(('%.4g' % pm for pm in pm_list))
-        print('f_unity=[%s]' % f_unity_str)
-        print('phase_margin=[%s]' % pm_str)
-
-        if plot:
-            import matplotlib.pyplot as plt
-            plt.ticklabel_format(style='sci', axis='both', scilimits=(-1, 2))
-            f, (ax1, ax2) = plt.subplots(2, sharex='all')
-            ax1.set_title('Magnitude v.s. Frequency')
-            ax1.set_ylabel('Magnitude (dB)')
-            ax2.set_title('Phase v.s. Frequency')
-            ax2.set_xlabel('Phase (Degrees)')
-            for corner, vout_vec in zip(corner_list, vout_vec_list):
-                mag_vec = 20 * np.log10(np.abs(vout_vec))
-                ang_vec = np.rad2deg(np.unwrap(np.angle(vout_vec)))
-                ax1.semilogx(freq_vec, mag_vec, label=corner)
-                ax2.semilogx(freq_vec, ang_vec, label=corner)
-
-            ax1.legend()
-            ax2.legend()
-
-        return corner_list, f_unity_list, pm_list
-
-    def find_min_cfb(self, phase_margin):
-        tb_type = 'tb_ac'
-        axis_names = ['corner', 'cfb', 'freq']
-        dsn_name_base = self.specs['dsn_name_base']
-
-        dsn_name = self.get_instance_name(dsn_name_base, self._val_list)
-
-        results = self.get_sim_results(tb_type, self._val_list)
         corner_list = results['corner']
         corner_sort_arg = np.argsort(corner_list)  # type: Sequence[int]
 
         # rearrange array axis
         sweep_vars = results['sweep_params']['vout_ac']
         order = [sweep_vars.index(name) for name in axis_names]
-        vout_data = np.transpose(results['vout_ac'], axes=order)
+        pm_data = np.transpose(results['pm_vout'], axes=order)
 
         # determine minimum cfb
         cfb_vec = results['cfb']
-        freq_vec = results['freq']
         cfb_idx_min = 0
         for corner_idx in corner_sort_arg:
             bin_iter = BinaryIterator(cfb_idx_min, cfb_vec.size)
             while bin_iter.has_next():
                 cur_cfb_idx = bin_iter.get_next()
-                vout_vec = vout_data[corner_idx, cur_cfb_idx, :]
-                _, pm = self._get_ac_info(freq_vec, vout_vec)
+                pm = pm_data[corner_idx, cur_cfb_idx]
                 if pm >= phase_margin:
                     bin_iter.save()
                     bin_iter.down()
@@ -854,23 +728,7 @@ class OpAmpTwoStageChar(MeasurementManager):
 
         if cfb_idx_min is None:
             cfb = None
-            print('dsn = %s, cfb = None' % dsn_name)
         else:
             cfb = cfb_vec[cfb_idx_min]
-            print('dsn = %s, cfb = %.4g' % (dsn_name, cfb))
 
         return cfb
-
-    @classmethod
-    def _get_ac_info(cls, freq_vec, vout_vec, lf_tol=1e-6):
-        xvec = np.log10(freq_vec)
-        mag_vec = np.log10(np.abs(vout_vec))
-        phase_vec = np.rad2deg(np.unwrap(np.angle(vout_vec)))
-        mag_wv = Waveform(xvec, mag_vec, lf_tol)
-        phase_wv = Waveform(xvec, phase_vec, lf_tol)
-
-        lf_unity = mag_wv.get_crossing(0)
-        phase0 = phase_wv(xvec[0])
-        phase = phase_wv(lf_unity)
-
-        return 10.0 ** lf_unity, 180 - (phase0 - phase)
