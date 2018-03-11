@@ -282,7 +282,7 @@ class OpAmpTwoStage(object):
 
         # design load
         print('designing load')
-        load.design(itarg_list, vds2_list, ft_load_scale * f_unit, l, stack_list=load_stack_list)
+        load.design(itarg_list, vds2_list, ft_load_scale * f_unit, stack_list=load_stack_list)
         load_info = load.get_dsn_info()
         vgs_load_list = load_info['vgs']
         gds_load_list = load_info['gds1']
@@ -299,7 +299,7 @@ class OpAmpTwoStage(object):
         # design input gm
         print('designing input gm')
         gm.design(itarg_list, vg_list, vmid_list, gds_load_list, vb_gm, vstar_gm_min, vds_tail_min,
-                  l, seg_min=seg_gm_min, stack_list=[stack_ngm])
+                  seg_min=seg_gm_min, stack_list=[stack_ngm])
         gm_info = gm.get_dsn_info()
         gm1_list = gm_info['gm']
         gds_in_list = gm_info['gds']

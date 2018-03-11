@@ -2,16 +2,16 @@
 
 """This module contains various design methods/classes for amplifier components."""
 
-from typing import List, Tuple, Optional, Dict, Any
+from typing import TYPE_CHECKING, List, Tuple, Optional, Dict, Any
 
 import numpy as np
 import scipy.optimize as sciopt
 
-from bag import float_to_si_string
 from bag.util.search import BinaryIterator
 from bag.math.dfun import DiffFunction
 
-from ckt_dsn_ec.mos.core import MOSDBDiscrete
+if TYPE_CHECKING:
+    from verification_ec.mos.query import MOSDBDiscrete
 
 
 class LoadDiodePFB(object):
@@ -37,8 +37,8 @@ class LoadDiodePFB(object):
         self._valid_widths = mos_db.width_list
         self._best_op = None
 
-    def design(self, itarg_list, vds2_list, ft_min, l, stack_list=None):
-        # type: (List[float], List[float], float, float, Optional[List[int]]) -> None
+    def design(self, itarg_list, vds2_list, ft_min, stack_list=None):
+        # type: (List[float], List[float], float, Optional[List[int]]) -> None
         """Design the diode load.
 
         Parameters
@@ -49,20 +49,9 @@ class LoadDiodePFB(object):
             list of op-amp stage 2 vds voltage across simulation environments.
         ft_min : float
             minimum transit frequency of the composit transistor.
-        l : float
-            channel length.
         stack_list : Optional[List[int]]
             list of valid stack numbers.
         """
-        # simple error checking.
-        if 'lch' in self._dsn_params:
-            self._db.set_dsn_params(l=l)
-        else:
-            lstr = float_to_si_string(l)
-            db_lstr = float_to_si_string(self._db.get_default_dsn_value('lch'))
-            if lstr != db_lstr:
-                raise ValueError('Given length = %s, but DB length = %s' % (lstr, db_lstr))
-
         if stack_list is None:
             stack_list = self._stack_list
 
@@ -105,8 +94,8 @@ class LoadDiodePFB(object):
                             while seg2_iter.has_next():
                                 seg2 = seg2_iter.get_next()
 
-                                vgs_list, err_code = self._solve_vgs(itarg_list, seg1, seg2, ib1, ib2,
-                                                                     vgs_min, vgs_max)
+                                vgs_list, err_code = self._solve_vgs(itarg_list, seg1, seg2, ib1,
+                                                                     ib2, vgs_min, vgs_max)
                                 if err_code < 0:
                                     # too few fingers
                                     seg2_iter.up()
@@ -115,8 +104,8 @@ class LoadDiodePFB(object):
                                     seg2_iter.down()
                                 else:
                                     one_pass = True
-                                    cur_score = self._compute_score(ft_min, seg1, seg2, gm1, gm2, gds1, gds2,
-                                                                    cd1, cd2, vgs_list)
+                                    cur_score = self._compute_score(ft_min, seg1, seg2, gm1, gm2,
+                                                                    gds1, gds2, cd1, cd2, vgs_list)
 
                                     if cur_score != -1:
                                         all_neg = False
@@ -302,7 +291,6 @@ class InputGm(object):
                vb,  # type: float
                vstar_min,  # type: float
                vds_tail_min,  # type: float
-               l,  # type: float
                seg_min=2,  # type: int
                stack_list=None,  # type: Optional[List[int]]
                ):
@@ -325,22 +313,11 @@ class InputGm(object):
             minimum V* of the diode.
         vds_tail_min : float
             minimum absolute vds voltage of tail device.
-        l : float
-            channel length.
         seg_min : int
             minimum number of segments.
         stack_list : Optional[List[str]]
             If given, we will only consider these stack values.
         """
-        # simple error checking.
-        if 'lch' in self._dsn_params:
-            self._db.set_dsn_params(l=l)
-        else:
-            lstr = float_to_si_string(l)
-            db_lstr = float_to_si_string(self._db.get_default_dsn_value('lch'))
-            if lstr != db_lstr:
-                raise ValueError('Given length = %s, but DB length = %s' % (lstr, db_lstr))
-
         vgs_idx = self._db.get_fun_arg_index('vgs')
         vds_idx = self._db.get_fun_arg_index('vds')
 
@@ -363,19 +340,23 @@ class InputGm(object):
                     vs_bnds = [(max(vg - vgs_max, vd - vds_max), min(vg - vgs_min, vd - vds_min))
                                for vg, vd in zip(vg_list, vd_list)]
 
-                    iunit_list = self._solve_iunit_from_vstar(vstar_min, vb, vg_list, vd_list, vs_bnds, ib, gm)
+                    iunit_list = self._solve_iunit_from_vstar(vstar_min, vb, vg_list, vd_list,
+                                                              vs_bnds, ib, gm)
                     if iunit_list is not None:
-                        tot_seg = min((itarg / iunit for itarg, iunit in zip(itarg_list, iunit_list)))
+                        tot_seg = min((itarg / iunit for itarg, iunit in
+                                       zip(itarg_list, iunit_list)))
                         # now get actual numbers
                         num_seg = max(seg_min, int(tot_seg // 2) * 2)
-                        vs_list, score = self._solve_vs(itarg_list, vg_list, vd_list, vs_bnds, vb, num_seg,
-                                                        ib, gm, gds, gds_load_list, vds_tail_min, vstar_min)
+                        vs_list, score = self._solve_vs(itarg_list, vg_list, vd_list, vs_bnds, vb,
+                                                        num_seg, ib, gm, gds, gds_load_list,
+                                                        vds_tail_min, vstar_min)
                         if score is not None and (best_score is None or score > best_score):
                             best_score = score
-                            self._best_op = (intent, stack, w, num_seg, vg_list, vd_list, vs_list, vb)
+                            self._best_op = (intent, stack, w, num_seg, vg_list, vd_list,
+                                             vs_list, vb)
 
-    def _solve_vs(self, itarg_list, vg_list, vd_list, vs_bnds, vb, scale, ib, gm, gds, gds_load_list,
-                  vds_tail_min, vstar_min):
+    def _solve_vs(self, itarg_list, vg_list, vd_list, vs_bnds, vb, scale, ib, gm, gds,
+                  gds_load_list, vds_tail_min, vstar_min):
         vs_list = []
         score = None
         for itarg, ibf, gmf, gdsf, vg, vd, gds_load, (vs_min, vs_max) in \
@@ -450,7 +431,8 @@ class InputGm(object):
         cdd = self._db.get_function_list('cdd')
 
         vstar_list, gm_list, gds_list, cgg_list, cdd_list = [], [], [], [], []
-        for ibf, gmf, gdsf, cggf, cddf, vg, vd, vs in zip(ib, gm, gds, cgg, cdd, vg_list, vd_list, vs_list):
+        for ibf, gmf, gdsf, cggf, cddf, vg, vd, vs in \
+                zip(ib, gm, gds, cgg, cdd, vg_list, vd_list, vs_list):
             arg = self._db.get_fun_arg(vbs=vb - vs, vds=vd - vs, vgs=vg - vs)
             cur_ib = seg * ibf(arg)
             cur_gm = seg * gmf(arg)
