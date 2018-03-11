@@ -2,7 +2,7 @@
 
 """This module defines the AC testbench class."""
 
-from typing import TYPE_CHECKING, List, Tuple, Dict, Any, Sequence
+from typing import TYPE_CHECKING, List, Tuple, Dict, Any, Sequence, Optional
 
 import numpy as np
 import scipy.interpolate as interp
@@ -26,7 +26,8 @@ class ACTB(TestbenchManager):
                  env_list,  # type: Sequence[str]
                  ):
         # type: (...) -> None
-        TestbenchManager.__init__(self, data_fname, tb_name, impl_lib, specs, sim_view_list, env_list)
+        TestbenchManager.__init__(self, data_fname, tb_name, impl_lib, specs,
+                                  sim_view_list, env_list)
 
     def setup_testbench(self, tb):
         # type: (Testbench) -> None
@@ -64,8 +65,8 @@ class ACTB(TestbenchManager):
         return list(sim_outputs.keys())
 
     @classmethod
-    def get_gain_and_w3db(cls, data, output_list):
-        # type: (Dict[str, Any], List[str]) -> Dict[str, Any]
+    def get_gain_and_w3db(cls, data, output_list, output_dict=None):
+        # type: (Dict[str, Any], List[str], Optional[Dict[str, Any]]) -> Dict[str, Any]
         """Returns a dictionary of gain and 3db bandwidth information.
 
         Parameters
@@ -74,13 +75,16 @@ class ACTB(TestbenchManager):
             the simulation data dictionary.
         output_list : Sequence[str]
             list of output names to compute gain/bandwidth for.
+        output_dict : Optional[Dict[str, Any]]
+            If not None, append to the given output dictionary instead.
 
         Returns
         -------
         output_dict : Dict[str, Any]
             A BAG data dictionary containing the gain/bandwidth information.
         """
-        output_dict = {}
+        if output_dict is None:
+            output_dict = {}
         swp_info = data['sweep_params']
         f_vec = data['freq']
         for out_name in output_list:
@@ -91,6 +95,40 @@ class ACTB(TestbenchManager):
             gain_arr, w3db_arr = cls._compute_gain_and_w3db(f_vec, np.abs(out_arr), freq_idx)
             cls.record_array(output_dict, data, gain_arr, 'gain_' + out_name, new_swp_params)
             cls.record_array(output_dict, data, w3db_arr, 'w3db_' + out_name, new_swp_params)
+
+        return output_dict
+
+    @classmethod
+    def get_ugb_and_pm(cls, data, output_list, output_dict=None):
+        # type: (Dict[str, Any], List[str], Optional[Dict[str, Any]]) -> Dict[str, Any]
+        """Returns a dictionary of unity-gain bandwidth and phase margin information.
+
+        Parameters
+        ----------
+        data : Dict[str, Any]
+            the simulation data dictionary.
+        output_list : Sequence[str]
+            list of output names to compute specs for.
+        output_dict : Optional[Dict[str, Any]]
+            If not None, append to the given output dictionary instead.
+
+        Returns
+        -------
+        output_dict : Dict[str, Any]
+            A BAG data dictionary containing the gain/bandwidth information.
+        """
+        if output_dict is None:
+            output_dict = {}
+        swp_info = data['sweep_params']
+        f_vec = data['freq']
+        for out_name in output_list:
+            out_arr = data[out_name]
+            swp_params = swp_info[out_name]
+            freq_idx = swp_params.index('freq')
+            new_swp_params = [par for par in swp_params if par != 'freq']
+            funity_arr, pm_arr = cls._compute_ugb_and_pm(f_vec, out_arr, freq_idx)
+            cls.record_array(output_dict, data, funity_arr, 'funity_' + out_name, new_swp_params)
+            cls.record_array(output_dict, data, pm_arr, 'pm_' + out_name, new_swp_params)
 
         return output_dict
 
@@ -135,10 +173,67 @@ class ACTB(TestbenchManager):
         num_swp = out_log.shape[0]
         w3db_list = []
         for idx in range(num_swp):
-            fun = interp.interp1d(freq_log, diff_arr[idx, :], kind='cubic', copy=False, assume_sorted=True)
+            fun = interp.interp1d(freq_log, diff_arr[idx, :], kind='cubic', copy=False,
+                                  assume_sorted=True)
             w3db_list.append(10.0**(cls._get_intersect(fun, freq_log[0], freq_log_max[idx])))
 
         return gain_arr, np.array(w3db_list).reshape(gain_arr.shape)
+
+    @classmethod
+    def _compute_ugb_and_pm(cls, f_vec, out_arr, freq_idx):
+        # type: (np.ndarray, np.ndarray, int) -> Tuple[np.ndarray, np.ndarray]
+        """Compute the unity gain frequency and phase margin of the frequency response.
+
+        Parmeters
+        ---------
+        f_vec : np.ndarray
+            the frequency vector.  Must be sorted.
+        out_arr : np.ndarray
+            the amplifier output transfer function.  Could be multidimensional.
+        freq_idx : int
+            frequency axis index.
+
+        Returns
+        -------
+        funity_arr : np.ndarray
+            the unity gain frequency array.
+        pm_arr : np.ndarray
+            the phase margin array, in degrees.
+        """
+        # move frequency axis to last axis
+        out_arr = np.moveaxis(out_arr, freq_idx, -1)
+        out_mag = np.abs(out_arr)
+        out_phase = np.angle(out_arr, deg=True)
+
+        # convert
+        num_pts = out_arr.shape[-1]
+        out_log = 20 * np.log10(out_mag.reshape(-1, num_pts))
+        out_phase = out_phase.reshape(-1, num_pts)
+
+        # find first index at which gain goes below 0dB
+        idx_arr = np.argmax(out_log < 0, axis=1)
+        freq_log = np.log10(f_vec)
+        freq_log_max = freq_log[idx_arr]
+
+        num_swp = out_log.shape[0]
+        funity_list, pm_list = [], []
+        for idx in range(num_swp):
+            fun = interp.interp1d(freq_log, out_log[idx, :], kind='cubic', copy=False,
+                                  assume_sorted=True)
+            funity_log = cls._get_intersect(fun, freq_log[0], freq_log_max[idx])
+            funity = 10.0 ** funity_log
+            funity_list.append(funity)
+            if funity != np.NAN:
+                pfun = interp.interp1d(freq_log, out_phase[idx, :], kind='cubic', copy=False,
+                                       assume_sorted=True)
+                pm = 180 - (out_phase[idx, 0] - pfun(funity_log))
+            else:
+                pm = np.NAN
+            pm_list.append(pm)
+
+        funity_arr = np.array(funity_list).reshape(out_arr.shape[:-1])
+        pm_arr = np.array(pm_list).reshape(out_arr.shape[:-1])
+        return funity_arr, pm_arr
 
     @classmethod
     def _get_intersect(cls, fun, xmin, xmax):
