@@ -47,22 +47,29 @@ def tf_vs_cfb(op_in, op_load, op_tail, cload, fg=2):
 
     print('fg_in = %d, fg_load=%.3g, rfb = %.4g' % (fg, scale_load, 1/gfb))
 
+    tf_list, lbl_list = [], []
+    for cval in cfb:
+        cir.add_cap(cval, 'x', 'out')
+        tf_list.append(cir.get_num_den('in', 'out'))
+        cir.add_cap(-cval, 'x', 'out')
+        lbl_list.append('$C_{f} = %.3g$f' % (cval * 1e15))
+
     fvec = np.logspace(fmin, fmax, num_f)
+    plot_tf(fvec, tf_list, lbl_list)
+
+
+def plot_tf(fvec, tf_list, lbl_list):
     wvec = 2 * np.pi * fvec
     plt.figure(1)
     plt.plot(fvec, [0] * len(fvec), '--k')
-    for cval in cfb:
-        cir.add_cap(cval, 'x', 'out')
-        num, den = cir.get_num_den('in', 'out')
-        cir.add_cap(-cval, 'x', 'out')
-
+    for (num, den), lbl in zip(tf_list, lbl_list):
         _, mag, phase = scisig.bode((num, den), w=wvec)
         poles = np.sort(np.abs(np.poly1d(den).roots) / (2 * np.pi))
         print(poles)
         poles = poles[:2]
         mag_poles = np.interp(poles, fvec, mag)
 
-        p = plt.semilogx(fvec, mag, label='$C_{f} = %.3g$f' % (cval * 1e15))
+        p = plt.semilogx(fvec, mag, label=lbl)
         color = p[0].get_color()
         plt.plot(poles, mag_poles, linestyle='', color=color, marker='o')
 
