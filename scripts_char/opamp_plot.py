@@ -106,7 +106,7 @@ def funity_vs_scale2(op_in, op_load, op_tail, cload, phase_margin, fg=2):
     scale_load = op_in['ibias'] / op_load['ibias'] * fg
     gfb = op_load['gm'] * scale_load
     s2vec = np.linspace(s2min, s2max, num_s).tolist()
-    funity_list, pm_list, copt_list = [], [], []
+    f0_list, pm0_list, f1_list, pm1_list, copt_list = [], [], [], [], []
     for s2 in s2vec:
         cir = LTICircuit()
         cir.add_transistor(op_in, 'mid', 'in', 'gnd', 'gnd', fg=fg)
@@ -114,56 +114,34 @@ def funity_vs_scale2(op_in, op_load, op_tail, cload, phase_margin, fg=2):
         cir.add_transistor(op_load, 'out', 'mid', 'gnd', 'gnd', fg=scale_load * s2)
         cir.add_transistor(op_tail, 'out', 'gnd', 'gnd', 'gnd', fg=fg * s2)
         cir.add_cap(cload, 'out', 'gnd')
-        cir.add_conductance(gfb * s2, 'mid', 'x')
 
+        num, den = cir.get_num_den('in', 'out')
+        f0_list.append(get_w_crossings(num, den)[0] / (2 * np.pi))
+        pm0_list.append(get_stability_margins(num, den)[0])
+
+        cir.add_conductance(gfb * s2, 'mid', 'x')
         copt = opt_cfb(phase_margin, cir, cmin, cmax, cstep, ctol)
         if copt is None:
             raise ValueError('oops, Cfb is None')
-
         cir.add_cap(copt, 'x', 'out')
         num, den = cir.get_num_den('in', 'out')
 
-        funity_list.append(get_w_crossings(num, den)[0] / (2 * np.pi))
-        pm_list.append(get_stability_margins(num, den)[0])
+        f1_list.append(get_w_crossings(num, den)[0] / (2 * np.pi))
+        pm1_list.append(get_stability_margins(num, den)[0])
         copt_list.append(copt)
 
     f, (ax0, ax1, ax2) = plt.subplots(3, sharex='all')
     ax0.plot(s2vec, np.array(copt_list) * 1e15)
     ax0.set_ylabel('Cf (fF)')
-    ax1.plot(s2vec, pm_list)
+    ax1.plot(s2vec, pm0_list, label='no Cf')
+    ax1.plot(s2vec, pm1_list, label='Cf')
+    ax1.legend()
     ax1.set_ylabel('$\phi_{PM}$ (deg)')
-    ax2.plot(s2vec, np.array(funity_list) * 1e-9)
+    ax2.plot(s2vec, np.array(f0_list) * 1e-9, label='no Cf')
+    ax2.plot(s2vec, np.array(f1_list) * 1e-9, label='Cf')
+    ax2.legend()
     ax2.set_ylabel('$f_{UG}$ (GHz)')
     ax2.set_xlabel('$I_2/I_1$')
-    plt.show()
-
-
-def funity_vs_scale2_nocfb(op_in, op_load, op_tail, cload, fg=2):
-    s2min = 1
-    s2max = 40
-    num_s = 100
-
-    scale_load = op_in['ibias'] / op_load['ibias'] * fg
-    s2vec = np.linspace(s2min, s2max, num_s).tolist()
-    funity_list, pm_list = [], []
-    for s2 in s2vec:
-        cir = LTICircuit()
-        cir.add_transistor(op_in, 'mid', 'in', 'gnd', 'gnd', fg=fg)
-        cir.add_transistor(op_load, 'mid', 'gnd', 'gnd', 'gnd', fg=scale_load)
-        cir.add_transistor(op_load, 'out', 'mid', 'gnd', 'gnd', fg=scale_load * s2)
-        cir.add_transistor(op_tail, 'out', 'gnd', 'gnd', 'gnd', fg=fg * s2)
-        cir.add_cap(cload, 'out', 'gnd')
-        num, den = cir.get_num_den('in', 'out')
-
-        funity_list.append(get_w_crossings(num, den)[0] / (2 * np.pi))
-        pm_list.append(get_stability_margins(num, den)[0])
-
-    f, (ax0, ax1) = plt.subplots(2, sharex='all')
-    ax0.plot(s2vec, pm_list)
-    ax0.set_ylabel('$\phi_{PM}$ (deg)')
-    ax1.plot(s2vec, np.array(funity_list) * 1e-9)
-    ax1.set_ylabel('$f_{UG}$ (GHz)')
-    ax1.set_xlabel('$I_2/I_1$')
     plt.show()
 
 
@@ -197,7 +175,6 @@ def run_main():
 
     # tf_vs_cfb(op_in, op_load, op_tail, cload)
     funity_vs_scale2(op_in, op_load, op_tail, cload, phase_margin, fg=2)
-    # funity_vs_scale2_nocfb(op_in, op_load, op_tail, cload, fg=2)
 
 
 if __name__ == '__main__':
