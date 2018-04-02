@@ -4,7 +4,6 @@
 
 from typing import TYPE_CHECKING, List, Optional, Dict, Any, Tuple, Sequence
 
-import os
 from copy import deepcopy
 
 import numpy as np
@@ -14,7 +13,6 @@ from bag.math import gcd
 from bag.data.lti import LTICircuit, get_stability_margins, get_w_crossings, get_w_3db
 from bag.util.search import FloatBinaryIterator, BinaryIterator, minimize_cost_golden
 from bag.simulation.core import MeasurementManager
-from bag.io.sim_data import save_sim_results
 
 from verification_ec.mos.query import MOSDBDiscrete
 
@@ -391,12 +389,24 @@ class OpAmpTwoStage(object):
 
         top_specs['layout_params'].update(self._amp_info['layout_info'])
 
-        top_specs['wrapper_params']['cload'] = dsn_specs['cload']
-        top_specs['wrapper_params']['vdd'] = vdd
+        wrapper_params = top_specs['dut_wrappers'][0]['params']
+        wrapper_params['cfb'] = self._amp_info['cfb']
+        wrapper_params['rfb'] = self._amp_info['rfb']
+        wrapper_params['cload'] = dsn_specs['cload']
+        wrapper_params['vdd'] = vdd
 
-        top_specs['feedback_params']['cfb'] = self._amp_info['cfb']
-        top_specs['feedback_params']['rfb'] = self._amp_info['rfb']
+        ac_tb = top_specs['measurements'][0]['testbenches']['ac']
+        ac_tb['fstart'] = 10 ** (f_bw_log - 1)
+        ac_tb['fstop'] = 10 ** (f_unit_log + 1)
+        ac_sim_vars = ac_tb['sim_vars']
+        ac_sim_vars['vincm'] = vindc
+        ac_sim_vars['voutcm'] = voutdc
+        ac_sim_vars['ibias'] = ibias
+        ac_sim_vars['vdd'] = vdd
+        ac_sim_vars['vinac'] = 1.0
+        ac_sim_vars['vindc'] = 0.0
 
+        """
         top_specs['tb_dc']['tb_params']['vimax'] = vdd
         top_specs['tb_dc']['tb_params']['vimin'] = -vdd
         top_specs['tb_dc']['tb_params']['vindc'] = vindc
@@ -406,15 +416,7 @@ class OpAmpTwoStage(object):
         top_specs['tb_dc']['tb_params']['voutref'] = voutdc
         top_specs['tb_dc']['tb_params']['vout_start'] = -vdd + 0.15
         top_specs['tb_dc']['tb_params']['vout_stop'] = vdd - 0.15
-
-        top_specs['tb_ac']['tb_params']['vincm'] = vindc
-        top_specs['tb_ac']['tb_params']['voutcm'] = voutdc
-        top_specs['tb_ac']['tb_params']['ibias'] = ibias
-        top_specs['tb_ac']['tb_params']['vdd'] = vdd
-        top_specs['tb_ac']['tb_params']['vinac'] = 1.0
-        top_specs['tb_ac']['tb_params']['vindc'] = 0.0
-        top_specs['tb_ac']['tb_params']['fstart'] = 10 ** f_bw_log
-        top_specs['tb_ac']['tb_params']['fstop'] = 10 ** (f_unit_log + 1)
+        """
 
         return top_specs
 
@@ -687,12 +689,15 @@ class OpAmpTwoStageChar(MeasurementManager):
         else:
             done = True
             next_state = ''
-
             cfb = self.get_state_output('ac0')['cfb']
-            tb_manager.get_gain_and_w3db(data, output_list, output_dict=results)
-            file_name = os.path.join(self.data_dir, 'ac_output.hdf5')
-            save_sim_results(results, file_name)
-            output = dict(cfb=cfb, output_file=file_name)
+            gain_results = tb_manager.get_gain_and_w3db(data, output_list, output_dict=results)
+            corner_list = results['corner'].tolist()
+            gain_list = gain_results['gain_vout'].tolist()
+            bw_list = gain_results['w3db_vout'].tolist()
+            funity_list = results['funity_vout'].tolist()
+            pm_list = results['pm_vout'].tolist()
+            output = dict(cfb=cfb, corners=corner_list, gain=gain_list, bw=bw_list,
+                          funity=funity_list, pm=pm_list)
 
         return done, next_state, output
 
