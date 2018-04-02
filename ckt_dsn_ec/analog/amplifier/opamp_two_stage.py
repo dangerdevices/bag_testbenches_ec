@@ -392,13 +392,16 @@ class OpAmpTwoStage(object):
         wrapper_params = top_specs['dut_wrappers'][0]['params']
         wrapper_params['cfb'] = self._amp_info['cfb']
         wrapper_params['rfb'] = self._amp_info['rfb']
-        wrapper_params['cload'] = dsn_specs['cload']
-        wrapper_params['vdd'] = vdd
 
-        ac_tb = top_specs['measurements'][0]['testbenches']['ac']
+        meas = top_specs['measurements'][0]
+        meas['cfb'] = self._amp_info['cfb']
+        meas['rfb'] = self._amp_info['rfb']
+        ac_tb = meas['testbenches']['ac']
         ac_tb['fstart'] = 10 ** (f_bw_log - 1)
         ac_tb['fstop'] = 10 ** (f_unit_log + 1)
         ac_sim_vars = ac_tb['sim_vars']
+        ac_sim_vars['vdd'] = vdd
+        ac_sim_vars['cload'] = dsn_specs['cload']
         ac_sim_vars['vincm'] = vindc
         ac_sim_vars['voutcm'] = voutdc
         ac_sim_vars['ibias'] = ibias
@@ -709,7 +712,7 @@ class OpAmpTwoStageChar(MeasurementManager):
         corner_sort_arg = np.argsort(corner_list)  # type: Sequence[int]
 
         # rearrange array axis
-        sweep_vars = results['sweep_params']['vout_ac']
+        sweep_vars = results['sweep_params']['pm_vout']
         order = [sweep_vars.index(name) for name in axis_names]
         pm_data = np.transpose(results['pm_vout'], axes=order)
 
@@ -732,7 +735,7 @@ class OpAmpTwoStageChar(MeasurementManager):
                 break
 
         if cfb_idx_min is None:
-            cfb = None
+            raise ValueError('Cannot determine cfb.')
         else:
             cfb = cfb_vec[cfb_idx_min]
 
