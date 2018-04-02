@@ -654,6 +654,7 @@ class OpAmpTwoStageChar(MeasurementManager):
     def get_testbench_info(self, state, prev_output):
         rfb0 = self.specs['rfb']
         cfb0 = self.specs['cfb']
+        find_cfb = self.specs.get('find_cfb', True)
         res_var = self.specs['res_var']
         cmin_scale = self.specs['cmin_scale']
         cmax_scale = self.specs['cmax_scale']
@@ -662,13 +663,16 @@ class OpAmpTwoStageChar(MeasurementManager):
         tmp = super(OpAmpTwoStageChar, self).get_testbench_info('ac', prev_output)
         tb_name, tb_type, tb_specs, tb_params = tmp
 
-        if state == 'ac0':
+        if state == 'ac0' and find_cfb:
             cfb_list = np.linspace(cfb0 * cmin_scale, cfb0 * cmax_scale, num_pts).tolist()
 
             tb_specs['sim_vars']['rfb'] = rfb0 * (1 - res_var)
             tb_specs['sim_vars']['cfb'] = cfb_list
         else:
-            cfb = self.get_state_output('ac0')['cfb']
+            if find_cfb:
+                cfb = self.get_state_output('ac0')['cfb']
+            else:
+                cfb = cfb0
             tb_specs['sim_vars']['rfb'] = rfb0
             tb_specs['sim_vars']['cfb'] = cfb
 
@@ -677,10 +681,11 @@ class OpAmpTwoStageChar(MeasurementManager):
     def process_output(self, state, data, tb_manager):
         # type: (str, Dict[str, Any], ACTB) -> Tuple[bool, str, Dict[str, Any]]
         phase_margin = self.specs['phase_margin']
+        find_cfb = self.specs.get('find_cfb', True)
         output_list = ['vout']
         results = tb_manager.get_ugb_and_pm(data, output_list)
 
-        if state == 'ac0':
+        if state == 'ac0' and find_cfb:
             done = False
             next_state = 'ac1'
             cfb = self._find_min_cfb(phase_margin, results)
@@ -688,7 +693,10 @@ class OpAmpTwoStageChar(MeasurementManager):
         else:
             done = True
             next_state = ''
-            cfb = self.get_state_output('ac0')['cfb']
+            if find_cfb:
+                cfb = self.get_state_output('ac0')['cfb']
+            else:
+                cfb = self.specs['cfb']
             gain_results = tb_manager.get_gain_and_w3db(data, output_list, output_dict=results)
             corner_list = results['corner'].tolist()
             gain_list = gain_results['gain_vout'].tolist()
