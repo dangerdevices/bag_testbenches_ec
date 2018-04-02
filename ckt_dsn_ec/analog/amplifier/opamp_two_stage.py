@@ -389,10 +389,6 @@ class OpAmpTwoStage(object):
 
         top_specs['layout_params'].update(self._amp_info['layout_info'])
 
-        wrapper_params = top_specs['dut_wrappers'][0]['params']
-        wrapper_params['cfb'] = self._amp_info['cfb']
-        wrapper_params['rfb'] = self._amp_info['rfb']
-
         meas = top_specs['measurements'][0]
         meas['cfb'] = self._amp_info['cfb']
         meas['rfb'] = self._amp_info['rfb']
@@ -739,4 +735,4 @@ class OpAmpTwoStageChar(MeasurementManager):
         else:
             cfb = cfb_vec[cfb_idx_min]
 
-        return cfb
+        return cfb.item()
