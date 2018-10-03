@@ -122,22 +122,31 @@ class MOSSPTB(TestbenchManager):
         vds_num = self.specs['vds_num']
         vgs_num = self.specs['vgs_num']
         sp_freq = self.specs['sp_freq']
+        adjust_vbs_sign = self.specs.get('adjust_vbs_sign', False)
 
         vgs_start, vgs_stop = self.specs['vgs_range']
         is_nmos = self.specs['is_nmos']
 
         # handle VBS sign and set parameters.
         if isinstance(vbs_val, list):
-            if is_nmos:
-                vbs_val = sorted((-abs(v) for v in vbs_val))
+            if adjust_vbs_sign:
+                print('adjusting vbs sign')
+                if is_nmos:
+                    vbs_val = sorted((-abs(v) for v in vbs_val))
+                else:
+                    vbs_val = sorted((abs(v) for v in vbs_val))
             else:
-                vbs_val = sorted((abs(v) for v in vbs_val))
+                vbs_val = sorted(vbs_val)
+            print('vbs values: {}'.format(vbs_val))
             tb.set_sweep_parameter('vbs', values=vbs_val)
         else:
-            if is_nmos:
-                vbs_val = -abs(vbs_val)
-            else:
-                vbs_val = abs(vbs_val)
+            if adjust_vbs_sign:
+                print('adjusting vbs sign')
+                if is_nmos:
+                    vbs_val = -abs(vbs_val)
+                else:
+                    vbs_val = abs(vbs_val)
+            print('vbs value: {:.4g}'.format(vbs_val))
             tb.set_parameter('vbs', vbs_val)
 
         tb.set_parameter('vgs_num', vgs_num)
@@ -151,7 +160,11 @@ class MOSSPTB(TestbenchManager):
             tb.set_sweep_parameter('vds', values=vds_vals)
             tb.set_parameter('vb_dc', 0)
         else:
-            vds_vals = np.linspace(-vds_max, -vds_min, vds_num + 1)
+            if vds_max > vds_min:
+                print('vds_max = {:.4g} > {:.4g} = vds_min, flipping sign'.format(vds_max, vds_min))
+                vds_vals = np.linspace(-vds_max, -vds_min, vds_num + 1)
+            else:
+                vds_vals = np.linspace(vds_min, vds_max, vds_num + 1)
             tb.set_sweep_parameter('vds', values=vds_vals)
             tb.set_parameter('vb_dc', abs(vgs_start))
 
