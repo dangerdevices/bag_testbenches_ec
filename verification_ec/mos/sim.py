@@ -122,7 +122,7 @@ class MOSSPTB(TestbenchManager):
         vds_num = self.specs['vds_num']
         vgs_num = self.specs['vgs_num']
         sp_freq = self.specs['sp_freq']
-        adjust_vbs_sign = self.specs.get('adjust_vbs_sign', False)
+        adjust_vbs_sign = self.specs.get('adjust_vbs_sign', True)
 
         vgs_start, vgs_stop = self.specs['vgs_range']
         is_nmos = self.specs['is_nmos']
