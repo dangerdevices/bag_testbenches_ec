@@ -312,22 +312,31 @@ class MOSNoiseTB(TestbenchManager):
         freq_start = self.specs['freq_start']
         freq_stop = self.specs['freq_stop']
         num_per_dec = self.specs['num_per_dec']
+        adjust_vbs_sign = self.specs.get('adjust_vbs_sign', True)
 
         vgs_start, vgs_stop = self.specs['vgs_range']
         is_nmos = self.specs['is_nmos']
 
         # handle VBS sign and set parameters.
         if isinstance(vbs_val, list):
-            if is_nmos:
-                vbs_val = sorted((-abs(v) for v in vbs_val))
+            if adjust_vbs_sign:
+                print('adjusting vbs sign')
+                if is_nmos:
+                    vbs_val = sorted((-abs(v) for v in vbs_val))
+                else:
+                    vbs_val = sorted((abs(v) for v in vbs_val))
             else:
-                vbs_val = sorted((abs(v) for v in vbs_val))
+                vbs_val = sorted(vbs_val)
+            print('vbs values: {}'.format(vbs_val))
             tb.set_sweep_parameter('vbs', values=vbs_val)
         else:
-            if is_nmos:
-                vbs_val = -abs(vbs_val)
-            else:
-                vbs_val = abs(vbs_val)
+            if adjust_vbs_sign:
+                print('adjusting vbs sign')
+                if is_nmos:
+                    vbs_val = -abs(vbs_val)
+                else:
+                    vbs_val = abs(vbs_val)
+            print('vbs value: {:.4g}'.format(vbs_val))
             tb.set_parameter('vbs', vbs_val)
 
         tb.set_parameter('freq_start', freq_start)
