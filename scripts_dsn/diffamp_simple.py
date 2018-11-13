@@ -15,7 +15,7 @@ from bag.io.sim_data import load_sim_file
 from bag.util.search import BinaryIterator, minimize_cost_golden_float
 from bag.simulation.core import DesignManager
 
-from verification_ec.mos.query import MOSDBDiscrete
+from verification_ec import MOSDBDiscrete
 
 
 def design_amp(amp_specs, nch_db, pch_db):

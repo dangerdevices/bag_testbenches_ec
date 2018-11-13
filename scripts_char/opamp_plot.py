@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from bag.util.search import FloatBinaryIterator
 from bag.data.lti import LTICircuit, get_stability_margins, get_w_crossings
 
-from verification_ec.mos.query import MOSDBDiscrete
+from verification_ec import MOSDBDiscrete
 
 
 def get_db(nch_dir, pch_dir, intent='standard', interp_method='spline', sim_env='tt'):

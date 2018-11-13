@@ -3,8 +3,8 @@
 
 from bag.io import read_yaml
 
-from ckt_dsn_ec.mos.core import MOSDBDiscrete
-from ckt_dsn_ec.analog.amplifier.components import InputGm
+from ckt_dsn_ec import MOSDBDiscrete
+from ckt_dsn_ec import InputGm
 
 
 def print_dsn_info(info):

@@ -9,7 +9,7 @@ from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import cm
 from matplotlib import ticker
 
-from verification_ec.mos.query import MOSDBDiscrete
+from verification_ec import MOSDBDiscrete
 
 interp_method = 'spline'
 spec_file = 'specs_mos_char/pch_w0d7.yaml'
